@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-label="0@B0 1>9K=H0 75@BB5C">
+  <rect width="240" height="180" fill="#e3f2fd"/>
+  <rect y="130" width="240" height="50" fill="#81c784"/>
+  <rect x="40" y="70" width="160" height="70" fill="#fff" stroke="#2e7d32" stroke-width="2" transform="rotate(-8 120 105)"/>
+  <path d="M50 90 L190 85 L180 120 L60 125 Z" fill="#c8e6c9" transform="rotate(-8 120 105)"/>
+  <circle cx="70" cy="145" r="10" fill="#ffcc80"/>
+  <circle cx="120" cy="150" r="10" fill="#ffcc80"/>
+  <circle cx="170" cy="145" r="10" fill="#ffcc80"/>
+  <text x="12" y="170" font-size="10" fill="#555">0@B0 / 10›K;0C</text>
+</svg>

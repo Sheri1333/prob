@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-label="5>4578O;K› é;H5C">
+  <rect width="240" height="180" fill="#e8f5e9"/>
+  <rect y="120" width="240" height="60" fill="#aed581"/>
+  <rect x="95" y="40" width="50" height="90" fill="#795548"/>
+  <line x1="120" y1="40" x2="120" y2="15" stroke="#555" stroke-width="2"/>
+  <circle cx="120" cy="12" r="6" fill="#555"/>
+  <rect x="108" y="70" width="24" height="30" fill="#ff9800" rx="2"/>
+  <circle cx="120" cy="62" r="8" fill="#ffcc80"/>
+  <text x="12" y="170" font-size="10" fill="#555">"5>4>;8B / é;H5C</text>
+</svg>
