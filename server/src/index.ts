@@ -8,8 +8,16 @@ import { adminRouter } from "./routes/admin.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 
+const corsOrigin = process.env.CORS_ORIGIN;
+const corsOptions = corsOrigin
+  ? {
+      origin: corsOrigin.split(",").map((s) => s.trim()),
+      credentials: true,
+    }
+  : { origin: true, credentials: true };
+
 const app = express();
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "5mb" }));
 
 app.get("/api/health", (_req, res) => {
@@ -36,3 +44,5 @@ app.use(
 app.listen(PORT, () => {
   console.log(`PROB API http://localhost:${PORT}`);
 });
+
+export default app;
