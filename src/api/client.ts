@@ -44,10 +44,7 @@ async function request<T>(
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(
-    /\/$/,
-    "",
-  ) ?? "";
+  const base = "https://prob-production-51a0.up.railway.app";
   const res = await fetch(`${base}/api${path}`, { ...options, headers });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
 
