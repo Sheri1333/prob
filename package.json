@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "npm run dev --prefix server",
+    "dev:all": "npm run seed --prefix server && npm run dev:server",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "npm run start --prefix server",
+    "seed": "npm run seed --prefix server"
   },
   "dependencies": {
     "react": "^19.1.0",

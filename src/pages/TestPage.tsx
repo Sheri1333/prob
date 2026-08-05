@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { QuestionView } from "../components/QuestionView";
 import { TestFooter } from "../components/TestFooter";
 import { TestHeader } from "../components/TestHeader";
-import { testsById } from "../data/tests/ent-geography";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
-import type { AnswerValue } from "../types/test";
+import type { AnswerValue, TestDefinition } from "../types/test";
 
 interface TestPageProps {
   lang: Lang;
@@ -16,22 +17,55 @@ interface TestPageProps {
 export function TestPage({ lang, onToggleLang }: TestPageProps) {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
-  const test = testId ? testsById[testId] : undefined;
+  const { user, loading: authLoading } = useAuth();
 
+  const [test, setTest] = useState<TestDefinition | null>(null);
+  const [loadError, setLoadError] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
   const [menuOpen, setMenuOpen] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(
-    () => (test?.durationMinutes ?? 50) * 60,
-  );
+  const [secondsLeft, setSecondsLeft] = useState(0);
   const [startedAt] = useState(() => new Date().toISOString());
+  const [finishing, setFinishing] = useState(false);
 
-  const finishTest = useCallback(() => {
-    if (!test) return;
-    navigate(`/test/${test.id}/results`, {
-      state: { answers, startedAt },
-    });
-  }, [answers, navigate, startedAt, test]);
+  useEffect(() => {
+    if (!testId) return;
+    api
+      .getTest(testId)
+      .then(({ test: loaded }) => {
+        setTest(loaded);
+        setSecondsLeft(loaded.durationMinutes * 60);
+      })
+      .catch((e) =>
+        setLoadError(e instanceof Error ? e.message : "Тест не найден"),
+      );
+  }, [testId]);
+
+  const finishTest = useCallback(async () => {
+    if (!test || finishing) return;
+    setFinishing(true);
+    try {
+      const result = await api.submitAttempt({
+        testId: test.id,
+        answers,
+        startedAt,
+      });
+      navigate(`/test/${test.id}/results`, {
+        state: {
+          answers,
+          startedAt,
+          attempt: result.attempt,
+          questions: result.questions,
+        },
+      });
+    } catch (e) {
+      setFinishing(false);
+      window.alert(e instanceof Error ? e.message : "Не удалось сохранить результат");
+    }
+  }, [answers, finishing, navigate, startedAt, test]);
+
+  const finishRef = useRef(finishTest);
+  finishRef.current = finishTest;
 
   useEffect(() => {
     if (!test) return;
@@ -39,14 +73,14 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           window.clearInterval(timer);
-          finishTest();
+          void finishRef.current();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [finishTest, test]);
+  }, [test?.id]);
 
   const answeredCount = useMemo(
     () =>
@@ -54,12 +88,31 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
     [answers, test],
   );
 
-  if (!test) {
+  if (authLoading) {
+    return <div className="page page--center">Загрузка...</div>;
+  }
+
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `/test/${testId ?? ""}` }}
+      />
+    );
+  }
+
+  if (loadError) {
     return (
       <div className="page page--center">
-        <p>Тест табылмады</p>
+        <p>{loadError}</p>
+        <Link to="/">Каталог</Link>
       </div>
     );
+  }
+
+  if (!test) {
+    return <div className="page page--center">Загрузка теста...</div>;
   }
 
   const question = test.questions[currentIndex];
@@ -70,7 +123,7 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
 
   const handleFinish = () => {
     if (window.confirm(t("confirmFinish", lang))) {
-      finishTest();
+      void finishTest();
     }
   };
 

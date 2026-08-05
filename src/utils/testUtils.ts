@@ -39,12 +39,14 @@ export function isQuestionCorrect(
     case "multiple_choice":
       return (
         Array.isArray(answer) &&
+        !!question.correctAnswers &&
         arraysEqual(answer, question.correctAnswers)
       );
     case "matching":
       return (
         typeof answer === "object" &&
         !Array.isArray(answer) &&
+        !!question.correctAnswers &&
         recordsEqual(answer, question.correctAnswers)
       );
     default:

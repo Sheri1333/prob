@@ -1,17 +1,19 @@
 import { Link, useLocation, useParams } from "react-router-dom";
-import { testsById } from "../data/tests/ent-geography";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import type { AnswerValue, Question } from "../types/test";
-import {
-  entScoreToGrade,
-  saveAttempt,
-  scoreTest,
-} from "../utils/testUtils";
+import { entScoreToGrade } from "../utils/testUtils";
 
 interface ResultsState {
   answers: Record<number, AnswerValue>;
   startedAt: string;
+  attempt: {
+    id: number;
+    score: number;
+    maxScore: number;
+    results: Record<number, boolean>;
+  };
+  questions: Question[];
 }
 
 interface ResultsPageProps {
@@ -53,18 +55,19 @@ function formatAnswer(question: Question, answer: AnswerValue | undefined): stri
 function formatCorrect(question: Question): string {
   switch (question.type) {
     case "single_choice": {
+      if (!question.correctAnswer) return "—";
       const opt = question.options.find((o) => o.id === question.correctAnswer);
       return opt ? `${opt.id}) ${opt.label}` : question.correctAnswer;
     }
     case "multiple_choice":
-      return question.correctAnswers
+      return (question.correctAnswers ?? [])
         .map((id) => {
           const opt = question.options.find((o) => o.id === id);
           return opt ? `${opt.id}) ${opt.label}` : id;
         })
         .join("; ");
     case "matching":
-      return Object.entries(question.correctAnswers)
+      return Object.entries(question.correctAnswers ?? {})
         .map(([rowId, optId]) => {
           const row = question.rows.find((r) => r.id === rowId);
           const opt = question.options.find((o) => o.id === optId);
@@ -80,9 +83,8 @@ export function ResultsPage({ lang }: ResultsPageProps) {
   const { testId } = useParams<{ testId: string }>();
   const location = useLocation();
   const state = location.state as ResultsState | null;
-  const test = testId ? testsById[testId] : undefined;
 
-  if (!test || !state?.answers) {
+  if (!state?.attempt || !state.questions) {
     return (
       <div className="page page--center">
         <p>{t("results", lang)} жоқ</p>
@@ -91,17 +93,8 @@ export function ResultsPage({ lang }: ResultsPageProps) {
     );
   }
 
-  const { score, maxScore, results } = scoreTest(test.questions, state.answers);
+  const { score, maxScore, results } = state.attempt;
   const entGrade = entScoreToGrade(score, maxScore);
-
-  saveAttempt({
-    testId: test.id,
-    answers: state.answers,
-    startedAt: state.startedAt,
-    finishedAt: new Date().toISOString(),
-    score,
-    maxScore,
-  });
 
   return (
     <div className="page results-page">
@@ -134,7 +127,7 @@ export function ResultsPage({ lang }: ResultsPageProps) {
       <section className="results-breakdown">
         <h2>{lang === "kz" ? "Жауаптар талдауы" : "Разбор ответов"}</h2>
         <div className="results-list">
-          {test.questions.map((question) => {
+          {state.questions.map((question) => {
             const userAnswer = state.answers[question.id];
             const correct = results[question.id];
             return (
@@ -165,9 +158,15 @@ export function ResultsPage({ lang }: ResultsPageProps) {
         </div>
       </section>
 
-      <Link to="/" className="results-page__back">
-        {t("backToCatalog", lang)}
-      </Link>
+      <div className="results-page__links">
+        <Link to="/" className="results-page__back">
+          {t("backToCatalog", lang)}
+        </Link>
+        <Link to="/profile" className="results-page__back results-page__back--secondary">
+          Профиль
+        </Link>
+      </div>
+      {testId && <p className="results-meta">Тест: {testId}</p>}
     </div>
   );
 }

@@ -20,20 +20,21 @@ export interface BaseQuestion {
 export interface SingleChoiceQuestion extends BaseQuestion {
   type: "single_choice";
   options: TestOption[];
-  correctAnswer: string;
+  /** Absent while taking a test (server strips answers). */
+  correctAnswer?: string;
 }
 
 export interface MultipleChoiceQuestion extends BaseQuestion {
   type: "multiple_choice";
   options: TestOption[];
-  correctAnswers: string[];
+  correctAnswers?: string[];
 }
 
 export interface MatchingQuestion extends BaseQuestion {
   type: "matching";
   rows: MatchingRow[];
   options: TestOption[];
-  correctAnswers: Record<string, string>;
+  correctAnswers?: Record<string, string>;
 }
 
 export type Question =

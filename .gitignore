@@ -5,3 +5,7 @@ dist/
 *.log
 tsconfig.tsbuildinfo
 .vite/
+server/data/
+server/node_modules/
+*.db
+*.db-*

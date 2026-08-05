@@ -1,19 +1,52 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { api } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
-import { catalog } from "../data/catalog";
+import type { CatalogItem } from "../types/test";
 
 interface CatalogPageProps {
   lang: Lang;
 }
 
 export function CatalogPage({ lang }: CatalogPageProps) {
+  const { user, isAdmin, logout } = useAuth();
+  const [tests, setTests] = useState<CatalogItem[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .getCatalog()
+      .then(({ tests: list }) => setTests(list))
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : "Не удалось загрузить каталог"),
+      )
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="page">
       <header className="site-header">
         <div className="site-header__logo">PROB</div>
         <nav className="site-header__nav">
           <span>{t("catalog", lang)}</span>
+          {user ? (
+            <>
+              <span className="site-header__user">{user.name}</span>
+              {isAdmin && <Link to="/admin">Админка</Link>}
+              <Link to="/profile">Профиль</Link>
+              <button type="button" className="link-btn" onClick={logout}>
+                Выйти
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login">Вход</Link>
+              <Link to="/register">Регистрация</Link>
+            </>
+          )}
         </nav>
       </header>
 
@@ -24,8 +57,14 @@ export function CatalogPage({ lang }: CatalogPageProps) {
 
       <section className="catalog">
         <h2>{t("catalog", lang)}</h2>
+        {loading && <p>Загрузка...</p>}
+        {error && (
+          <p className="auth-card__error">
+            {error}. Запустите API: <code>npm run server</code>
+          </p>
+        )}
         <div className="catalog-grid">
-          {catalog.map((item) => (
+          {tests.map((item) => (
             <article key={item.id} className="test-card">
               <div className="test-card__badge">{item.examType}</div>
               <h3>{lang === "kz" ? item.titleKz : item.title}</h3>
@@ -35,19 +74,17 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 {item.durationMinutes} {t("minutes", lang)}
               </p>
               <p className="test-card__price">
-                {item.isFree
-                  ? t("free", lang)
-                  : `${item.priceTenge} ₸`}
+                {item.isFree ? t("free", lang) : `${item.priceTenge} ₸`}
               </p>
               <p className="test-card__desc">{item.description}</p>
-              {item.id === "ent-geography" || item.isFree ? (
+              {item.isFree || user ? (
                 <Link to={`/test/${item.id}`} className="test-card__cta">
-                  {t("startTest", lang)}
+                  {user ? t("startTest", lang) : "Войти и начать"}
                 </Link>
               ) : (
-                <button type="button" className="test-card__cta test-card__cta--disabled" disabled>
-                  {item.priceTenge} ₸
-                </button>
+                <Link to="/login" className="test-card__cta">
+                  {item.priceTenge} ₸ — войти
+                </Link>
               )}
             </article>
           ))}
