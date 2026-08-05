@@ -8,16 +8,14 @@ import { adminRouter } from "./routes/admin.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 
-const corsOrigin = process.env.CORS_ORIGIN;
-const corsOptions = corsOrigin
-  ? {
-      origin: corsOrigin.split(",").map((s) => s.trim()),
-      credentials: true,
-    }
-  : { origin: true, credentials: true };
-
 const app = express();
-app.use(cors(corsOptions));
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
 app.use(express.json({ limit: "5mb" }));
 
 app.get("/api/health", (_req, res) => {
