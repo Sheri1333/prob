@@ -6,6 +6,8 @@ import type { TestDefinition } from "../types/test";
 
 type Tab = "dashboard" | "tests" | "users" | "attempts" | "upload";
 
+type ParseResult = Awaited<ReturnType<typeof api.adminParsePdf>>;
+
 const EMPTY_JSON = `{
   "id": "ent-new-subject",
   "title": "ЕНТ — Новый предмет",
@@ -33,6 +35,12 @@ const EMPTY_JSON = `{
   ]
 }`;
 
+const TYPE_LABEL: Record<string, string> = {
+  single_choice: "Одиночный",
+  matching: "Сопоставление",
+  multiple_choice: "Множественный",
+};
+
 export function AdminPage() {
   const { user, loading, isAdmin, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -53,6 +61,22 @@ export function AdminPage() {
   >([]);
   const [jsonText, setJsonText] = useState(EMPTY_JSON);
   const [uploading, setUploading] = useState(false);
+  const [parsing, setParsing] = useState(false);
+  const [savingPreview, setSavingPreview] = useState(false);
+  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [previewMeta, setPreviewMeta] = useState({
+    id: "",
+    title: "",
+    titleKz: "",
+    section: "",
+    subject: "",
+    examType: "ENT",
+    durationMinutes: 50,
+    isFree: true,
+    priceTenge: "" as string,
+    description: "",
+  });
+  const [openPreviewId, setOpenPreviewId] = useState<number | null>(1);
 
   const load = useCallback(async () => {
     setError("");
@@ -96,14 +120,16 @@ export function AdminPage() {
         description?: string;
       };
       await api.adminSaveTest(parsed);
-      setMessage(`Тест «${parsed.id}» сохранён (${parsed.questions?.length ?? 0} вопросов)`);
+      setMessage(
+        `Тест «${parsed.id}» сохранён (${parsed.questions?.length ?? 0} вопросов)`,
+      );
       setTests((await api.adminTests()).tests);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка сохранения");
     }
   }
 
-  async function handleFile(file: File | null) {
+  async function handleJsonFile(file: File | null) {
     if (!file) return;
     setUploading(true);
     setError("");
@@ -118,6 +144,85 @@ export function AdminPage() {
       setError(err instanceof Error ? err.message : "Ошибка загрузки");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handlePdfFile(file: File | null) {
+    if (!file) return;
+    setParsing(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api.adminParsePdf(file);
+      setParseResult(result);
+      const d = result.draft;
+      setPreviewMeta({
+        id: d.id,
+        title: d.title,
+        titleKz: d.titleKz,
+        section: d.section,
+        subject: d.subject,
+        examType: d.examType,
+        durationMinutes: d.durationMinutes,
+        isFree: d.isFree,
+        priceTenge: d.priceTenge != null ? String(d.priceTenge) : "",
+        description: d.description ?? "",
+      });
+      setOpenPreviewId(result.parse.questions[0]?.id ?? null);
+      setJsonText(
+        JSON.stringify(
+          {
+            ...d,
+            questionCount: d.questions.length,
+          },
+          null,
+          2,
+        ),
+      );
+      setMessage(
+        `PDF разобран: ${result.parse.questions.length} вопросов (${result.filename})`,
+      );
+    } catch (err) {
+      setParseResult(null);
+      setError(err instanceof Error ? err.message : "Ошибка разбора PDF");
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  async function handleSavePreview() {
+    if (!parseResult) return;
+    setSavingPreview(true);
+    setError("");
+    setMessage("");
+    try {
+      const payload: TestDefinition & { description?: string } = {
+        ...parseResult.draft,
+        id: previewMeta.id.trim(),
+        title: previewMeta.title.trim(),
+        titleKz: previewMeta.titleKz.trim(),
+        section: previewMeta.section.trim(),
+        subject: previewMeta.subject.trim(),
+        examType: previewMeta.examType as "ENT" | "OGE",
+        durationMinutes: Number(previewMeta.durationMinutes) || 50,
+        isFree: previewMeta.isFree,
+        priceTenge: previewMeta.priceTenge
+          ? Number(previewMeta.priceTenge)
+          : undefined,
+        description: previewMeta.description,
+        questionCount: parseResult.draft.questions.length,
+        questions: parseResult.draft.questions,
+      };
+      if (!payload.id) throw new Error("Укажите ID теста");
+      await api.adminSaveTest(payload);
+      setMessage(
+        `Тест «${payload.id}» сохранён (${payload.questions.length} вопросов). Правильные ответы заполните позже в JSON.`,
+      );
+      setTests((await api.adminTests()).tests);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ошибка сохранения");
+    } finally {
+      setSavingPreview(false);
     }
   }
 
@@ -136,6 +241,7 @@ export function AdminPage() {
     try {
       const { test } = await api.adminGetTest(id);
       setJsonText(JSON.stringify(test, null, 2));
+      setParseResult(null);
       setTab("upload");
       setMessage(`Загружен в редактор: ${id}`);
     } catch (err) {
@@ -304,12 +410,266 @@ export function AdminPage() {
 
         {tab === "upload" && (
           <section>
-            <h1>Загрузка / редактирование теста</h1>
-            <p className="admin-hint">
-              Загрузите JSON-файл или вставьте JSON ниже. Формат — как в{" "}
-              <code>ent-geography.sample.json</code>.
-            </p>
+            <h1>Загрузка теста</h1>
 
+            <div className="admin-pdf-zone">
+              <h2>1. PDF из НЦТ / пробника</h2>
+              <p className="admin-hint">
+                Загрузите PDF с вопросами (текстовый, не скан). Сервер
+                распарсит и покажет предпросмотр — сохранение только после
+                вашей проверки.
+              </p>
+              <label className="admin-upload__btn admin-upload__btn--pdf">
+                {parsing ? "Разбор PDF..." : "Выбрать PDF"}
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  hidden
+                  disabled={parsing}
+                  onChange={(e) => {
+                    void handlePdfFile(e.target.files?.[0] ?? null);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            {parseResult && (
+              <div className="admin-preview">
+                <h2>2. Предпросмотр</h2>
+                <div className="admin-preview__stats">
+                  <span>
+                    Файл: <strong>{parseResult.filename}</strong>
+                  </span>
+                  <span>
+                    Страниц: <strong>{parseResult.parse.pages}</strong>
+                  </span>
+                  <span>
+                    Вопросов:{" "}
+                    <strong>{parseResult.parse.questions.length}</strong>
+                  </span>
+                  <span>
+                    Одиночных:{" "}
+                    <strong>{parseResult.parse.byType.single_choice}</strong>
+                  </span>
+                  <span>
+                    Сопоставление:{" "}
+                    <strong>{parseResult.parse.byType.matching}</strong>
+                  </span>
+                  <span>
+                    Множественных:{" "}
+                    <strong>{parseResult.parse.byType.multiple_choice}</strong>
+                  </span>
+                  <span>
+                    С картинкой (по тексту):{" "}
+                    <strong>{parseResult.parse.withImages}</strong>
+                  </span>
+                </div>
+
+                <div className="admin-preview__pipeline">
+                  {parseResult.parse.steps.map((s) => (
+                    <div key={s.step} className="admin-preview__step">
+                      <strong>
+                        {s.step}. {s.name}
+                      </strong>
+                      <span>{s.detail}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {parseResult.parse.withImages > 0 && (
+                  <p className="admin-alert admin-alert--error">
+                    В {parseResult.parse.withImages} вопросах есть «сурет /
+                    карта / кесте» — картинки из PDF пока не подтягиваются.
+                    Правильные ответы тоже нужно заполнить позже.
+                  </p>
+                )}
+
+                <div className="admin-meta-form">
+                  <label>
+                    ID
+                    <input
+                      value={previewMeta.id}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({ ...m, id: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Название (RU)
+                    <input
+                      value={previewMeta.title}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({ ...m, title: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Название (KZ)
+                    <input
+                      value={previewMeta.titleKz}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({
+                          ...m,
+                          titleKz: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Предмет
+                    <input
+                      value={previewMeta.subject}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({
+                          ...m,
+                          subject: e.target.value,
+                          section: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Тип
+                    <select
+                      value={previewMeta.examType}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({
+                          ...m,
+                          examType: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="ENT">ENT</option>
+                      <option value="OGE">OGE</option>
+                    </select>
+                  </label>
+                  <label>
+                    Минут
+                    <input
+                      type="number"
+                      value={previewMeta.durationMinutes}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({
+                          ...m,
+                          durationMinutes: Number(e.target.value) || 50,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="admin-meta-form__check">
+                    <input
+                      type="checkbox"
+                      checked={previewMeta.isFree}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({
+                          ...m,
+                          isFree: e.target.checked,
+                        }))
+                      }
+                    />
+                    Бесплатный
+                  </label>
+                  <label>
+                    Цена ₸
+                    <input
+                      value={previewMeta.priceTenge}
+                      disabled={previewMeta.isFree}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({
+                          ...m,
+                          priceTenge: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="admin-meta-form__full">
+                    Описание
+                    <textarea
+                      rows={2}
+                      value={previewMeta.description}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({
+                          ...m,
+                          description: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+
+                <div className="admin-preview__questions">
+                  <h3>Вопросы</h3>
+                  {parseResult.parse.questions.map((q) => {
+                    const open = openPreviewId === q.id;
+                    return (
+                      <article
+                        key={q.id}
+                        className={`admin-q ${open ? "admin-q--open" : ""}`}
+                      >
+                        <button
+                          type="button"
+                          className="admin-q__head"
+                          onClick={() =>
+                            setOpenPreviewId(open ? null : q.id)
+                          }
+                        >
+                          <span className="admin-q__num">№{q.id}</span>
+                          <span className="admin-q__type">
+                            {TYPE_LABEL[q.type] ?? q.type}
+                          </span>
+                          {q.hasImageHint && (
+                            <span className="admin-q__img">картинка</span>
+                          )}
+                          <span className="admin-q__text">{q.text}</span>
+                        </button>
+                        {open && (
+                          <div className="admin-q__body">
+                            {q.rows && q.rows.length > 0 && (
+                              <div className="admin-q__rows">
+                                <strong>Строки:</strong>
+                                <ul>
+                                  {q.rows.map((r) => (
+                                    <li key={r.id}>
+                                      {r.id}) {r.label}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            <ul className="admin-q__opts">
+                              {q.options.map((o) => (
+                                <li key={o.id}>
+                                  <strong>{o.id})</strong> {o.label}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  className="auth-card__btn"
+                  disabled={savingPreview}
+                  onClick={() => void handleSavePreview()}
+                >
+                  {savingPreview
+                    ? "Сохранение..."
+                    : `Сохранить тест (${parseResult.parse.questions.length} вопросов)`}
+                </button>
+              </div>
+            )}
+
+            <hr className="admin-divider" />
+
+            <h2>JSON вручную</h2>
+            <p className="admin-hint">
+              Альтернатива: загрузите готовый JSON или правьте текст ниже.
+            </p>
             <div className="admin-upload">
               <label className="admin-upload__btn">
                 {uploading ? "Загрузка..." : "Выбрать JSON-файл"}
@@ -318,7 +678,10 @@ export function AdminPage() {
                   accept="application/json,.json"
                   hidden
                   disabled={uploading}
-                  onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => {
+                    void handleJsonFile(e.target.files?.[0] ?? null);
+                    e.target.value = "";
+                  }}
                 />
               </label>
             </div>
@@ -327,11 +690,11 @@ export function AdminPage() {
               <textarea
                 value={jsonText}
                 onChange={(e) => setJsonText(e.target.value)}
-                rows={22}
+                rows={16}
                 spellCheck={false}
               />
               <button type="submit" className="auth-card__btn">
-                Сохранить тест
+                Сохранить JSON
               </button>
             </form>
           </section>
@@ -424,9 +787,9 @@ export function AdminPage() {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso.endsWith("Z") || iso.includes("T") ? iso : iso + "Z").toLocaleString(
-      "ru-RU",
-    );
+    return new Date(
+      iso.endsWith("Z") || iso.includes("T") ? iso : iso + "Z",
+    ).toLocaleString("ru-RU");
   } catch {
     return iso;
   }

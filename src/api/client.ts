@@ -239,4 +239,35 @@ export const api = {
       { method: "POST", body: form },
     );
   },
+
+  adminParsePdf(file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{
+      ok: boolean;
+      filename: string;
+      parse: {
+        pages: number;
+        chars: number;
+        steps: { step: number; name: string; detail: string }[];
+        sections: { key: string; label: string; chars: number }[];
+        contexts: { title: string; text: string }[];
+        questions: Array<{
+          id: number;
+          type: "single_choice" | "multiple_choice" | "matching";
+          text: string;
+          options: { id: string; label: string }[];
+          rows?: { id: string; label: string }[];
+          hasImageHint: boolean;
+        }>;
+        byType: {
+          single_choice: number;
+          matching: number;
+          multiple_choice: number;
+        };
+        withImages: number;
+      };
+      draft: TestDefinition & { description?: string; priceTenge?: number | null };
+    }>("/admin/tests/parse-pdf", { method: "POST", body: form });
+  },
 };

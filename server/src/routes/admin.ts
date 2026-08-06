@@ -3,9 +3,17 @@ import multer from "multer";
 import { db } from "../db.js";
 import { adminRequired, type AuthedRequest } from "../auth.js";
 import { validateTestPayload, type Question } from "../scoring.js";
+import {
+  parsePdfBuffer,
+  slugFromFilename,
+  toTestQuestions,
+} from "../pdfParser.js";
 
 export const adminRouter = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5_000_000 } });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15_000_000 },
+});
 
 adminRouter.use(adminRequired);
 
@@ -343,6 +351,56 @@ adminRouter.post("/tests/upload", upload.single("file"), (req, res) => {
   } catch (e) {
     res.status(400).json({
       error: e instanceof Error ? e.message : "Некорректный JSON",
+    });
+  }
+});
+
+/** Parse PDF → preview only (does not save). */
+adminRouter.post("/tests/parse-pdf", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: "Файл не загружен (field: file)" });
+      return;
+    }
+    if (!/\.pdf$/i.test(req.file.originalname) && req.file.mimetype !== "application/pdf") {
+      res.status(400).json({ error: "Нужен PDF-файл" });
+      return;
+    }
+
+    const parsed = await parsePdfBuffer(req.file.buffer);
+    if (parsed.questions.length === 0) {
+      res.status(400).json({
+        error:
+          "Не удалось распознать вопросы. Проверьте, что PDF текстовый (не скан).",
+      });
+      return;
+    }
+
+    const slug = slugFromFilename(req.file.originalname);
+    const draft = {
+      id: `ent-${slug}`,
+      title: `ЕНТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
+      titleKz: `ҰБТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
+      section: "География",
+      examType: "ENT",
+      subject: "География",
+      durationMinutes: 50,
+      isFree: true,
+      priceTenge: null as number | null,
+      description: `Импорт из PDF «${req.file.originalname}». Правильные ответы ещё не заполнены.`,
+      questions: toTestQuestions(parsed.questions),
+    };
+
+    res.json({
+      ok: true,
+      filename: req.file.originalname,
+      parse: parsed,
+      draft,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({
+      error: e instanceof Error ? e.message : "Ошибка разбора PDF",
     });
   }
 });
