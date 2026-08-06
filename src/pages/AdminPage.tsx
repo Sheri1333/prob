@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { api } from "../api/client";
+import { api, mediaUrl } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import type { TestDefinition } from "../types/test";
 
@@ -461,7 +461,11 @@ export function AdminPage() {
                     <strong>{parseResult.parse.byType.multiple_choice}</strong>
                   </span>
                   <span>
-                    С картинкой (по тексту):{" "}
+                    Картинок привязано:{" "}
+                    <strong>{parseResult.parse.imagesAttached ?? 0}</strong>
+                  </span>
+                  <span>
+                    С пометкой «сурет/карта»:{" "}
                     <strong>{parseResult.parse.withImages}</strong>
                   </span>
                 </div>
@@ -477,11 +481,17 @@ export function AdminPage() {
                   ))}
                 </div>
 
-                {parseResult.parse.withImages > 0 && (
+                {(parseResult.parse.imagesAttached ?? 0) === 0 &&
+                  parseResult.parse.withImages > 0 && (
                   <p className="admin-alert admin-alert--error">
-                    В {parseResult.parse.withImages} вопросах есть «сурет /
-                    карта / кесте» — картинки из PDF пока не подтягиваются.
-                    Правильные ответы тоже нужно заполнить позже.
+                    Вопросы ссылаются на картинки, но извлечь изображения из
+                    PDF не удалось.
+                  </p>
+                )}
+                {(parseResult.parse.imagesAttached ?? 0) > 0 && (
+                  <p className="admin-alert admin-alert--ok">
+                    Картинки извлечены из PDF и привязаны к вопросам. После
+                    сохранения они будут доступны в тесте.
                   </p>
                 )}
 
@@ -618,13 +628,30 @@ export function AdminPage() {
                           <span className="admin-q__type">
                             {TYPE_LABEL[q.type] ?? q.type}
                           </span>
-                          {q.hasImageHint && (
-                            <span className="admin-q__img">картинка</span>
-                          )}
+                          {(q.images?.length ?? 0) > 0 ? (
+                            <span className="admin-q__img">
+                              {q.images!.length} фото
+                            </span>
+                          ) : q.hasImageHint ? (
+                            <span className="admin-q__img admin-q__img--miss">
+                              нет фото
+                            </span>
+                          ) : null}
                           <span className="admin-q__text">{q.text}</span>
                         </button>
                         {open && (
                           <div className="admin-q__body">
+                            {q.images && q.images.length > 0 && (
+                              <div className="admin-q__photos">
+                                {q.images.map((src, i) => (
+                                  <img
+                                    key={i}
+                                    src={mediaUrl(src)}
+                                    alt={`Вопрос ${q.id} рис. ${i + 1}`}
+                                  />
+                                ))}
+                              </div>
+                            )}
                             {q.rows && q.rows.length > 0 && (
                               <div className="admin-q__rows">
                                 <strong>Строки:</strong>

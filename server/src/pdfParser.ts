@@ -1,5 +1,11 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { PDFParse } from "pdf-parse";
 import type { Question } from "./scoring.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+export const UPLOADS_DIR = path.join(__dirname, "..", "data", "uploads");
 
 const LETTER_MAP: Record<string, string> = {
   А: "A",
@@ -22,6 +28,8 @@ export interface ParsedQuestion {
   options: { id: string; label: string }[];
   rows?: { id: string; label: string }[];
   hasImageHint: boolean;
+  /** data: URLs for preview, or /uploads/... after persist */
+  images?: string[];
 }
 
 export interface ParsePdfResult {
@@ -37,6 +45,7 @@ export interface ParsePdfResult {
     multiple_choice: number;
   };
   withImages: number;
+  imagesAttached: number;
 }
 
 function normalizeLetter(raw: string): string {
@@ -152,22 +161,9 @@ function parseMatching(body: string) {
   return { text: text || "Сәйкестендіру", rows, options };
 }
 
-export function parsePdfText(rawText: string, pages = 0): ParsePdfResult {
-  const steps: ParsePdfResult["steps"] = [];
+function buildQuestionsFromText(rawText: string) {
   const text = stripPageMarkers(rawText);
-  steps.push({
-    step: 1,
-    name: "Извлечение текста",
-    detail: `${rawText.length} символов`,
-  });
-
   const sections = detectSections(text);
-  steps.push({
-    step: 2,
-    name: "Секции",
-    detail: sections.map((s) => s.label).join(" · ") || "не найдены",
-  });
-
   const questions: ParsedQuestion[] = [];
   const contexts: { title: string; text: string }[] = [];
 
@@ -217,44 +213,113 @@ export function parsePdfText(rawText: string, pages = 0): ParsePdfResult {
   }
 
   questions.sort((a, b) => a.id - b.id);
-
-  const byType = {
-    single_choice: questions.filter((q) => q.type === "single_choice").length,
-    matching: questions.filter((q) => q.type === "matching").length,
-    multiple_choice: questions.filter((q) => q.type === "multiple_choice").length,
-  };
-  const withImages = questions.filter((q) => q.hasImageHint).length;
-
-  steps.push({
-    step: 3,
-    name: "Вопросы",
-    detail: `${questions.length} распознано`,
-  });
-  steps.push({
-    step: 4,
-    name: "Итог",
-    detail: `single=${byType.single_choice}, matching=${byType.matching}, multi=${byType.multiple_choice}, картинки≈${withImages}`,
-  });
-
   return {
-    pages,
-    chars: rawText.length,
-    steps,
+    questions,
+    contexts,
     sections: sections.map((s) => ({
       key: s.key,
       label: s.label,
       chars: s.text.length,
     })),
-    contexts,
-    questions,
-    byType,
-    withImages,
   };
 }
 
-/** Convert parsed questions into DB-ready Question[] (answers empty — fill later). */
+/**
+ * Assign embedded page images to questions that mention image/map/table,
+ * using page text to know which questions sit on which page.
+ */
+function attachImagesToQuestions(
+  questions: ParsedQuestion[],
+  pageTexts: { num: number; text: string }[],
+  pageImages: { pageNumber: number; images: { dataUrl: string; width: number; height: number }[] }[],
+): number {
+  const knownIds = new Set(questions.map((q) => q.id));
+  const byId = new Map(questions.map((q) => [q.id, q]));
+  let attached = 0;
+
+  for (const page of pageTexts) {
+    const imgPage = pageImages.find((p) => p.pageNumber === page.num);
+    if (!imgPage || imgPage.images.length === 0) continue;
+
+    // Question starts on this page: "14. " but ignore matching row "1." "2."
+    const foundIds = [
+      ...page.text.matchAll(/(?:^|\n)(\d+)\.\s/g),
+    ]
+      .map((m) => Number(m[1]))
+      .filter((id) => knownIds.has(id));
+
+    // unique, keep order
+    const pageQuestionIds = [...new Set(foundIds)];
+    let hintQs = pageQuestionIds
+      .map((id) => byId.get(id)!)
+      .filter((q) => q.hasImageHint);
+
+    // If page has images but no text-hint questions, skip
+    if (hintQs.length === 0) continue;
+
+    const pool = [...imgPage.images];
+    if (hintQs.length === 1) {
+      // all images on page belong to this question (e.g. two photos)
+      hintQs[0].images = pool.map((i) => i.dataUrl);
+      attached += pool.length;
+    } else {
+      // one image per hint question in order; extras go to first
+      for (let i = 0; i < hintQs.length; i++) {
+        const img = pool[i] ?? pool[pool.length - 1];
+        if (!img) break;
+        hintQs[i].images = [...(hintQs[i].images ?? []), img.dataUrl];
+        attached += 1;
+      }
+      if (pool.length > hintQs.length) {
+        const extra = pool.slice(hintQs.length).map((i) => i.dataUrl);
+        hintQs[0].images = [...(hintQs[0].images ?? []), ...extra];
+        attached += extra.length;
+      }
+    }
+  }
+
+  return attached;
+}
+
+export function parsePdfText(rawText: string, pages = 0): ParsePdfResult {
+  const built = buildQuestionsFromText(rawText);
+  const byType = {
+    single_choice: built.questions.filter((q) => q.type === "single_choice").length,
+    matching: built.questions.filter((q) => q.type === "matching").length,
+    multiple_choice: built.questions.filter((q) => q.type === "multiple_choice").length,
+  };
+  const withImages = built.questions.filter((q) => q.hasImageHint).length;
+
+  return {
+    pages,
+    chars: rawText.length,
+    steps: [
+      { step: 1, name: "Извлечение текста", detail: `${rawText.length} символов` },
+      {
+        step: 2,
+        name: "Секции",
+        detail: built.sections.map((s) => s.label).join(" · ") || "не найдены",
+      },
+      { step: 3, name: "Вопросы", detail: `${built.questions.length} распознано` },
+      {
+        step: 4,
+        name: "Итог",
+        detail: `single=${byType.single_choice}, matching=${byType.matching}, multi=${byType.multiple_choice}, нуждаются в картинке=${withImages}`,
+      },
+    ],
+    sections: built.sections,
+    contexts: built.contexts,
+    questions: built.questions,
+    byType,
+    withImages,
+    imagesAttached: 0,
+  };
+}
+
+/** Convert parsed questions into DB-ready Question[]. */
 export function toTestQuestions(parsed: ParsedQuestion[]): Question[] {
   return parsed.map((q) => {
+    const images = q.images?.length ? q.images : undefined;
     if (q.type === "single_choice") {
       return {
         id: q.id,
@@ -262,6 +327,7 @@ export function toTestQuestions(parsed: ParsedQuestion[]): Question[] {
         text: q.text,
         options: q.options,
         correctAnswer: "",
+        images,
       };
     }
     if (q.type === "multiple_choice") {
@@ -271,6 +337,7 @@ export function toTestQuestions(parsed: ParsedQuestion[]): Question[] {
         text: q.text,
         options: q.options,
         correctAnswers: [] as string[],
+        images,
       };
     }
     return {
@@ -280,21 +347,98 @@ export function toTestQuestions(parsed: ParsedQuestion[]): Question[] {
       rows: q.rows ?? [],
       options: q.options,
       correctAnswers: {} as Record<string, string>,
+      images,
     };
   });
 }
 
 export async function parsePdfBuffer(buffer: Buffer): Promise<ParsePdfResult> {
   const parser = new PDFParse({ data: buffer });
-  const result = await parser.getText();
-  return parsePdfText(result.text, result.total ?? 0);
+  try {
+    const textResult = await parser.getText();
+    const imageResult = await parser.getImage({
+      imageThreshold: 40,
+      imageDataUrl: true,
+      imageBuffer: false,
+    });
+
+    const result = parsePdfText(textResult.text, textResult.total ?? 0);
+
+    const pageTexts = (textResult.pages ?? []).map((p) => ({
+      num: p.num,
+      text: p.text,
+    }));
+    const pageImages = (imageResult.pages ?? []).map((p) => ({
+      pageNumber: p.pageNumber,
+      images: p.images
+        .filter((img) => img.dataUrl && img.width >= 40 && img.height >= 40)
+        .map((img) => ({
+          dataUrl: img.dataUrl,
+          width: img.width,
+          height: img.height,
+        })),
+    }));
+
+    const attached = attachImagesToQuestions(
+      result.questions,
+      pageTexts,
+      pageImages,
+    );
+    result.imagesAttached = attached;
+    result.withImages = result.questions.filter(
+      (q) => (q.images?.length ?? 0) > 0 || q.hasImageHint,
+    ).length;
+    result.steps.push({
+      step: 5,
+      name: "Картинки",
+      detail: `извлечено и привязано: ${attached}`,
+    });
+
+    return result;
+  } finally {
+    await parser.destroy().catch(() => undefined);
+  }
+}
+
+/** Persist data:image URLs to disk and rewrite to /uploads/tests/{testId}/... */
+export function materializeQuestionImages(
+  testId: string,
+  questions: Question[],
+): Question[] {
+  const safeId = testId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+  const dir = path.join(UPLOADS_DIR, "tests", safeId);
+  fs.mkdirSync(dir, { recursive: true });
+
+  return questions.map((q) => {
+    if (!q.images?.length) return q;
+    const saved: string[] = [];
+    q.images.forEach((src, idx) => {
+      if (src.startsWith("/uploads/")) {
+        saved.push(src);
+        return;
+      }
+      const m = /^data:image\/(png|jpeg|jpg|webp|gif);base64,(.+)$/i.exec(src);
+      if (!m) {
+        saved.push(src);
+        return;
+      }
+      const ext = m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase();
+      const filename = `q${q.id}_${idx}.${ext}`;
+      const filePath = path.join(dir, filename);
+      fs.writeFileSync(filePath, Buffer.from(m[2], "base64"));
+      saved.push(`/uploads/tests/${safeId}/${filename}`);
+    });
+    return { ...q, images: saved };
+  });
 }
 
 export function slugFromFilename(name: string): string {
-  return name
-    .replace(/\.pdf$/i, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9а-яёәіңғүұқөһ]+/gi, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 48) || `test-${Date.now()}`;
+  return (
+    name
+      .replace(/\.pdf$/i, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9а-яёәіңғүұқөһ]+/gi, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 48) || `test-${Date.now()}`
+  );
 }

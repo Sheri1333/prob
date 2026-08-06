@@ -890,10 +890,31 @@ select {
 
 .admin-q__img {
   font-size: 0.75rem;
-  background: #fff3e0;
-  color: #e65100;
+  background: #e8f5e9;
+  color: #2e7d32;
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
+}
+
+.admin-q__img--miss {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.admin-q__photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.admin-q__photos img {
+  max-width: min(100%, 320px);
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fafafa;
 }
 
 .admin-q__text {

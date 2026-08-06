@@ -1,3 +1,4 @@
+import { mediaUrl } from "../api/client";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import type { AnswerValue, Question } from "../types/test";
@@ -32,8 +33,13 @@ export function QuestionView({
               question.images.length > 1 ? "question-view__images--grid" : ""
             }`}
           >
-            {question.images.map((src) => (
-              <img key={src} src={src} alt="" className="question-view__image" />
+            {question.images.map((src, i) => (
+              <img
+                key={`${i}-${src.slice(0, 48)}`}
+                src={mediaUrl(src)}
+                alt=""
+                className="question-view__image"
+              />
             ))}
           </div>
         )}

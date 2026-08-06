@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import "./db.js";
+import { UPLOADS_DIR } from "./pdfParser.js";
 import { authRouter } from "./routes/auth.js";
 import { testsRouter } from "./routes/tests.js";
 import { attemptsRouter } from "./routes/attempts.js";
@@ -16,7 +17,9 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "40mb" }));
+
+app.use("/uploads", express.static(UPLOADS_DIR));
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "prob-api" });
@@ -41,6 +44,7 @@ app.use(
 
 app.listen(PORT, () => {
   console.log(`PROB API http://localhost:${PORT}`);
+  console.log(`Uploads ${UPLOADS_DIR}`);
 });
 
 export default app;

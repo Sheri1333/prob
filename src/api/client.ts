@@ -3,6 +3,25 @@ import type { AnswerValue, CatalogItem, Question, TestDefinition } from "../type
 const TOKEN_KEY = "prob_token";
 const USER_KEY = "prob_user";
 
+/** API origin: empty in Vite dev (proxy), Railway in production builds. */
+export const API_BASE = import.meta.env.DEV
+  ? ""
+  : "https://prob-production-51a0.up.railway.app";
+
+/** Resolve /uploads/... or leave data:/http(s) as-is. */
+export function mediaUrl(src: string): string {
+  if (!src) return src;
+  if (
+    src.startsWith("data:") ||
+    src.startsWith("http://") ||
+    src.startsWith("https://") ||
+    src.startsWith("blob:")
+  ) {
+    return src;
+  }
+  return `${API_BASE}${src.startsWith("/") ? src : `/${src}`}`;
+}
+
 export interface AuthUser {
   id: number;
   email: string;
@@ -44,8 +63,7 @@ async function request<T>(
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const base = "https://prob-production-51a0.up.railway.app";
-  const res = await fetch(`${base}/api${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}/api${path}`, { ...options, headers });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
 
   if (!res.ok) {
@@ -259,6 +277,7 @@ export const api = {
           options: { id: string; label: string }[];
           rows?: { id: string; label: string }[];
           hasImageHint: boolean;
+          images?: string[];
         }>;
         byType: {
           single_choice: number;
@@ -266,6 +285,7 @@ export const api = {
           multiple_choice: number;
         };
         withImages: number;
+        imagesAttached: number;
       };
       draft: TestDefinition & { description?: string; priceTenge?: number | null };
     }>("/admin/tests/parse-pdf", { method: "POST", body: form });

@@ -7,6 +7,7 @@ import {
   parsePdfBuffer,
   slugFromFilename,
   toTestQuestions,
+  materializeQuestionImages,
 } from "../pdfParser.js";
 
 export const adminRouter = Router();
@@ -302,6 +303,7 @@ adminRouter.get("/tests/:id", (req, res) => {
 adminRouter.post("/tests", (req: AuthedRequest, res) => {
   try {
     const payload = validateTestPayload(req.body);
+    payload.questions = materializeQuestionImages(payload.id, payload.questions);
     upsertTest(payload);
     res.status(201).json({ ok: true, id: payload.id });
   } catch (e) {
@@ -317,6 +319,7 @@ adminRouter.put("/tests/:id", (req: AuthedRequest, res) => {
       res.status(404).json({ error: "Тест не найден" });
       return;
     }
+    payload.questions = materializeQuestionImages(payload.id, payload.questions);
     upsertTest(payload);
     res.json({ ok: true, id: payload.id });
   } catch (e) {
