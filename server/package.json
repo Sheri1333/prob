@@ -17,7 +17,6 @@
     "mongodb": "^6.18.0",
     "multer": "^2.0.1",
     "pdf-parse": "^2.4.5",
-    "prob": "file:..",
     "tsx": "^4.19.3"
   },
   "devDependencies": {

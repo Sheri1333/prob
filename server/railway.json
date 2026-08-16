@@ -5,7 +5,7 @@
     "buildCommand": "npm ci"
   },
   "deploy": {
-    "startCommand": "npm start",
+    "startCommand": "NODE_OPTIONS=--dns-result-order=ipv4first npm start",
     "restartPolicyType": "ON_FAILURE"
   }
 }

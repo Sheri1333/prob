@@ -1,8 +1,12 @@
 import { MongoClient, ObjectId, type Collection, type Db } from "mongodb";
+import dns from "node:dns";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Question } from "./scoring.js";
+
+// Node 17+ prefers IPv6; Atlas SRV often fails TLS handshake (alert 80) unless we force IPv4.
+dns.setDefaultResultOrder("ipv4first");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -92,6 +96,8 @@ export async function connectDb(): Promise<Db> {
   client = new MongoClient(uri, {
     serverSelectionTimeoutMS: 20_000,
     connectTimeoutMS: 20_000,
+    family: 4,
+    autoSelectFamily: false,
   });
   await client.connect();
   database = client.db("prob");

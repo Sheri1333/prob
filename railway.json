@@ -5,7 +5,7 @@
     "buildCommand": "npm install --prefix server"
   },
   "deploy": {
-    "startCommand": "npm run start --prefix server",
+    "startCommand": "NODE_OPTIONS=--dns-result-order=ipv4first npm run start --prefix server",
     "restartPolicyType": "ON_FAILURE"
   }
 }

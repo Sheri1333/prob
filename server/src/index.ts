@@ -88,11 +88,26 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`Uploads ${UPLOADS_DIR}`);
 });
 
-connectDb()
-  .then(() => seedDatabase())
-  .catch((err) => {
-    console.error("MongoDB failed:", err instanceof Error ? err.message : err);
-  });
+async function connectLoop(): Promise<void> {
+  for (;;) {
+    try {
+      await connectDb();
+      await seedDatabase();
+      return;
+    } catch (err) {
+      console.error(
+        "MongoDB failed:",
+        err instanceof Error ? err.message : err,
+      );
+      console.error(
+        "Check Atlas Network Access (0.0.0.0/0) and MONGODB_URI. Retry in 8s...",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 8000));
+    }
+  }
+}
+
+void connectLoop();
 
 export default app;
 export { server };
