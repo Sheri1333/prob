@@ -9,6 +9,7 @@
     "seed": "tsx src/seed.ts"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.80",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "express": "^5.1.0",
@@ -16,6 +17,7 @@
     "mongodb": "^6.18.0",
     "multer": "^2.0.1",
     "pdf-parse": "^2.4.5",
+    "prob": "file:..",
     "tsx": "^4.19.3"
   },
   "devDependencies": {

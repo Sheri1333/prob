@@ -173,7 +173,17 @@ export function AdminPage() {
         priceTenge: d.priceTenge != null ? String(d.priceTenge) : "",
         description: d.description ?? "",
       });
-      setOpenPreviewId(result.parse.questions[0]?.id ?? null);
+      setOpenPreviewId(
+        result.draft.questions.find((q) => {
+          if (q.type === "single_choice") return !q.correctAnswer;
+          if (q.type === "multiple_choice") {
+            return !q.correctAnswers?.length;
+          }
+          return !q.correctAnswers || Object.keys(q.correctAnswers).length === 0;
+        })?.id ??
+          result.parse.questions[0]?.id ??
+          null,
+      );
       setJsonText(
         JSON.stringify(
           {
@@ -185,7 +195,7 @@ export function AdminPage() {
         ),
       );
       setMessage(
-        `PDF разобран: ${result.parse.questions.length} вопросов (${result.filename})`,
+        `PDF разобран: ${result.parse.questions.length} вопросов, жёлтых ключей: ${result.parse.keysFromHighlight ?? 0} (${result.filename})`,
       );
       } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка разбора PDF");
@@ -443,9 +453,9 @@ export function AdminPage() {
             <div className="admin-pdf-zone">
               <h2>1. PDF из НЦТ / пробника</h2>
               <p className="admin-hint">
-                Парсер только вытаскивает вопросы, варианты и картинки. Правильные
-                ответы система не угадывает — вы отмечаете их сами в шаге 2,
-                затем сохраняете тест.
+                Парсер вытаскивает вопросы, варианты и картинки. Если правильный
+                ответ выделен жёлтым маркером в PDF — ключ подставится сам.
+                Проверьте и поправьте в шаге 2, затем сохраните.
               </p>
               <label className="admin-upload__btn admin-upload__btn--pdf">
                 {parsing ? "Разбор PDF..." : "Выбрать PDF"}
@@ -495,6 +505,10 @@ export function AdminPage() {
                       <span>
                         Картинок:{" "}
                         <strong>{parseResult.parse.imagesAttached ?? 0}</strong>
+                      </span>
+                      <span>
+                        Жёлтых ключей:{" "}
+                        <strong>{parseResult.parse.keysFromHighlight ?? 0}</strong>
                       </span>
                     </div>
                     <div className="admin-preview__pipeline">

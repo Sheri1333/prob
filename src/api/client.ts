@@ -286,6 +286,7 @@ export const api = {
         };
         withImages: number;
         imagesAttached: number;
+        keysFromHighlight?: number;
       };
       draft: TestDefinition & { description?: string; priceTenge?: number | null };
     }>("/admin/tests/parse-pdf", { method: "POST", body: form });

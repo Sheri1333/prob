@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PDFParse } from "pdf-parse";
 import type { Question } from "./scoring.js";
+import { extractYellowHighlights, type HighlightExtract } from "./yellowHighlights.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const UPLOADS_DIR = path.join(__dirname, "..", "data", "uploads");
@@ -30,6 +31,10 @@ export interface ParsedQuestion {
   hasImageHint: boolean;
   /** data: URLs for preview, or /uploads/... after persist */
   images?: string[];
+  /** Filled from yellow highlights in the PDF, if present. */
+  detectedAnswer?: string;
+  detectedAnswers?: string[];
+  detectedMatch?: Record<string, string>;
 }
 
 export interface ParsePdfResult {
@@ -46,6 +51,7 @@ export interface ParsePdfResult {
   };
   withImages: number;
   imagesAttached: number;
+  keysFromHighlight: number;
 }
 
 function normalizeLetter(raw: string): string {
@@ -332,6 +338,7 @@ export function parsePdfText(rawText: string, pages = 0): ParsePdfResult {
     byType,
     withImages,
     imagesAttached: 0,
+    keysFromHighlight: 0,
   };
 }
 
@@ -345,7 +352,7 @@ export function toTestQuestions(parsed: ParsedQuestion[]): Question[] {
         type: "single_choice" as const,
         text: q.text,
         options: q.options,
-        correctAnswer: "",
+        correctAnswer: q.detectedAnswer ?? "",
         images,
       };
     }
@@ -355,7 +362,7 @@ export function toTestQuestions(parsed: ParsedQuestion[]): Question[] {
         type: "multiple_choice" as const,
         text: q.text,
         options: q.options,
-        correctAnswers: [] as string[],
+        correctAnswers: (q.detectedAnswers ?? []) as string[],
         images,
       };
     }
@@ -365,10 +372,170 @@ export function toTestQuestions(parsed: ParsedQuestion[]): Question[] {
       text: q.text,
       rows: q.rows ?? [],
       options: q.options,
-      correctAnswers: {} as Record<string, string>,
+      correctAnswers: { ...(q.detectedMatch ?? {}) } as Record<string, string>,
       images,
     };
   });
+}
+
+function lettersInText(text: string): string[] {
+  const found: string[] = [];
+  const re = /(?:^|\s)([A-Fa-fА-Фа-ф])\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const letter = normalizeLetter(m[1]);
+    if (!found.includes(letter)) found.push(letter);
+  }
+  return found;
+}
+
+function rowsInText(text: string): string[] {
+  const found: string[] = [];
+  const re = /(?:^|\s)([1-6])[.)](?=\s|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(` ${text}`))) {
+    if (!found.includes(m[1])) found.push(m[1]);
+  }
+  return found;
+}
+
+function nearestQuestionId(
+  page: number,
+  y: number,
+  extract: HighlightExtract,
+  knownIds: Set<number>,
+): number | null {
+  const pageIds = extract.markers
+    .filter((m) => m.page === page && knownIds.has(m.id))
+    .map((m) => m.id);
+  const skipSmall = pageIds.some((id) => id >= 10);
+
+  let best: { id: number; y: number } | null = null;
+  for (const marker of extract.markers) {
+    if (marker.page !== page || !knownIds.has(marker.id)) continue;
+    if (skipSmall && marker.id <= 6) continue;
+    if (marker.y + 1 < y) continue;
+    if (!best || marker.y < best.y) best = marker;
+  }
+  return best?.id ?? null;
+}
+
+function applyYellowAnswerKeys(
+  questions: ParsedQuestion[],
+  extract: HighlightExtract,
+): number {
+  const knownIds = new Set(questions.map((q) => q.id));
+  const byId = new Map(questions.map((q) => [q.id, q]));
+  const singleLetters = new Map<number, Set<string>>();
+  const multiLetters = new Map<number, Set<string>>();
+  const matchBuf: {
+    qid: number;
+    rowId?: string;
+    optionId?: string;
+    y: number;
+  }[] = [];
+
+  for (const hit of extract.hits) {
+    const qid =
+      nearestQuestionId(hit.page, hit.y, extract, knownIds) ??
+      [...hit.text.matchAll(/(\d+)\./g)]
+        .map((m) => Number(m[1]))
+        .reverse()
+        .find((n) => knownIds.has(n)) ??
+      null;
+    if (!qid) continue;
+    const question = byId.get(qid);
+    if (!question) continue;
+
+    let letters = lettersInText(hit.text).filter((id) =>
+      question.options.some((o) => o.id === id),
+    );
+    if (letters.length === 0) {
+      const t = hit.text.toLowerCase();
+      letters = question.options
+        .filter(
+          (o) =>
+            o.label.length >= 6 &&
+            t.includes(o.label.toLowerCase().slice(0, 40)),
+        )
+        .map((o) => o.id);
+    }
+    const rows = rowsInText(hit.text).filter((id) =>
+      (question.rows ?? []).some((r) => r.id === id),
+    );
+
+    if (question.type === "single_choice") {
+      const set = singleLetters.get(qid) ?? new Set<string>();
+      for (const letter of letters) set.add(letter);
+      singleLetters.set(qid, set);
+    } else if (question.type === "multiple_choice") {
+      const set = multiLetters.get(qid) ?? new Set<string>();
+      for (const letter of letters) set.add(letter);
+      multiLetters.set(qid, set);
+    } else if (question.type === "matching") {
+      if (rows.length === 1 && letters.length === 1) {
+        matchBuf.push({
+          qid,
+          rowId: rows[0],
+          optionId: letters[0],
+          y: hit.y,
+        });
+      } else {
+        for (const rowId of rows) matchBuf.push({ qid, rowId, y: hit.y });
+        for (const optionId of letters) {
+          matchBuf.push({ qid, optionId, y: hit.y });
+        }
+      }
+    }
+  }
+
+  for (const [qid, letters] of singleLetters) {
+    if (letters.size !== 1) continue;
+    const question = byId.get(qid);
+    if (question?.type === "single_choice") {
+      question.detectedAnswer = [...letters][0];
+    }
+  }
+
+  for (const [qid, letters] of multiLetters) {
+    if (letters.size === 0) continue;
+    const question = byId.get(qid);
+    if (question?.type === "multiple_choice") {
+      question.detectedAnswers = [...letters];
+    }
+  }
+
+  const band = 10;
+  const grouped = new Map<string, typeof matchBuf>();
+  for (const item of matchBuf) {
+    const key = `${item.qid}:${Math.round(item.y / band)}`;
+    const list = grouped.get(key) ?? [];
+    list.push(item);
+    grouped.set(key, list);
+  }
+  for (const group of grouped.values()) {
+    const question = byId.get(group[0].qid);
+    if (!question || question.type !== "matching") continue;
+    const rows = [
+      ...new Set(group.map((g) => g.rowId).filter(Boolean) as string[]),
+    ];
+    const options = [
+      ...new Set(group.map((g) => g.optionId).filter(Boolean) as string[]),
+    ];
+    if (rows.length !== 1 || options.length !== 1) continue;
+    question.detectedMatch = {
+      ...(question.detectedMatch ?? {}),
+      [rows[0]]: options[0],
+    };
+  }
+
+  return questions.filter((q) => {
+    if (q.type === "single_choice") return Boolean(q.detectedAnswer);
+    if (q.type === "multiple_choice") {
+      return (q.detectedAnswers?.length ?? 0) > 0;
+    }
+    return Object.keys(q.detectedMatch ?? {}).length > 0;
+  }).length;
 }
 
 export async function parsePdfBuffer(buffer: Buffer): Promise<ParsePdfResult> {
@@ -412,6 +579,27 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ParsePdfResult> {
       name: "Картинки",
       detail: `извлечено и привязано: ${attached}`,
     });
+
+    try {
+      const extract = await extractYellowHighlights(buffer);
+      const keyed = applyYellowAnswerKeys(result.questions, extract);
+      result.keysFromHighlight = keyed;
+      result.steps.push({
+        step: 6,
+        name: "Жёлтые ключи",
+        detail:
+          extract.hits.length === 0
+            ? "жёлтых пометок не найдено"
+            : `пометок ${extract.hits.length}, ключей проставлено: ${keyed}`,
+      });
+    } catch (err) {
+      console.warn("Yellow highlight parse failed", err);
+      result.steps.push({
+        step: 6,
+        name: "Жёлтые ключи",
+        detail: "не удалось прочитать подсветку — отметьте ответы вручную",
+      });
+    }
 
     return result;
   } finally {
