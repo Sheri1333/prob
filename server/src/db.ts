@@ -105,6 +105,10 @@ export async function connectDb(): Promise<Db> {
   return database;
 }
 
+export function isDbReady(): boolean {
+  return database !== null;
+}
+
 function requireDb(): Db {
   if (!database) {
     throw new Error("MongoDB ещё не подключена. Вызовите connectDb() при старте.");
