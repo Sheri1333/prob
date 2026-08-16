@@ -14,6 +14,7 @@ interface AnswerKeyEditorProps {
   openId: number | null;
   onOpen: (id: number | null) => void;
   onlyMissing: boolean;
+  onRemove?: (index: number) => void;
 }
 
 export function AnswerKeyEditor({
@@ -22,6 +23,7 @@ export function AnswerKeyEditor({
   openId,
   onOpen,
   onlyMissing,
+  onRemove,
 }: AnswerKeyEditorProps) {
   const updateAt = (index: number, next: Question) => {
     const copy = [...questions];
@@ -118,6 +120,15 @@ export function AnswerKeyEditor({
                     onChange={(next) => updateAt(index, next)}
                   />
                 )}
+                {onRemove && (
+                  <button
+                    type="button"
+                    className="admin-q__delete"
+                    onClick={() => onRemove(index)}
+                  >
+                    Удалить вопрос
+                  </button>
+                )}
               </div>
             )}
           </article>
@@ -162,12 +173,40 @@ function ChoiceKey({
     });
   };
 
+  const addOption = () => {
+    const used = new Set(question.options.map((o) => o.id));
+    const nextId = "ABCDEFGH".split("").find((letter) => !used.has(letter));
+    if (!nextId) return;
+    onChange({
+      ...question,
+      options: [...question.options, { id: nextId, label: "" }],
+    });
+  };
+
+  const removeOption = (id: string) => {
+    if (question.options.length <= 2) return;
+    const options = question.options.filter((o) => o.id !== id);
+    if (question.type === "single_choice") {
+      onChange({
+        ...question,
+        options,
+        correctAnswer: question.correctAnswer === id ? "" : question.correctAnswer,
+      });
+      return;
+    }
+    onChange({
+      ...question,
+      options,
+      correctAnswers: (question.correctAnswers ?? []).filter((v) => v !== id),
+    });
+  };
+
   return (
     <div>
       <p className="admin-hint">
         {question.type === "single_choice"
-          ? "Нажмите на правильный вариант — его отметит система как ключ."
-          : "Отметьте все правильные варианты (обычно два)."}
+          ? "Нажмите «правильный» у верного варианта."
+          : "Отметьте все правильные варианты."}
       </p>
       <div className="admin-key-opts">
         {question.options.map((option) => {
@@ -187,12 +226,27 @@ function ChoiceKey({
               </button>
               <input
                 value={option.label}
+                placeholder="Текст варианта"
                 onChange={(e) => updateLabel(option.id, e.target.value)}
               />
+              {question.options.length > 2 && (
+                <button
+                  type="button"
+                  className="admin-match__remove"
+                  onClick={() => removeOption(option.id)}
+                >
+                  ×
+                </button>
+              )}
             </div>
           );
         })}
       </div>
+      {question.options.length < 8 && (
+        <button type="button" className="admin-match__add" onClick={addOption}>
+          + вариант
+        </button>
+      )}
     </div>
   );
 }
@@ -240,6 +294,16 @@ function MatchingKey({
       ...question,
       rows: question.rows.filter((r) => r.id !== rowId),
       correctAnswers: nextPairs,
+    });
+  };
+
+  const addOption = () => {
+    const taken = new Set(question.options.map((o) => o.id));
+    const nextId = "ABCDEFGH".split("").find((letter) => !taken.has(letter));
+    if (!nextId) return;
+    onChange({
+      ...question,
+      options: [...question.options, { id: nextId, label: "" }],
     });
   };
 
@@ -315,6 +379,11 @@ function MatchingKey({
               </div>
             );
           })}
+          {question.options.length < 8 && (
+            <button type="button" className="admin-match__add" onClick={addOption}>
+              + вариант
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -83,14 +83,6 @@ export function toObjectId(id: string): ObjectId | null {
   }
 }
 
-const FALLBACK_MONGODB_URI =
-  "mongodb+srv://sauseecom_db_user:WEkdZzXvKP1jmwuy@cluster0.f2egc61.mongodb.net/prob?retryWrites=true&w=majority";
-
-function mongoUri(): string {
-  const fromEnv = process.env.MONGODB_URI?.trim();
-  return fromEnv || FALLBACK_MONGODB_URI;
-}
-
 function mongoHost(uri: string): string {
   try {
     return new URL(uri.replace(/^mongodb\+srv/, "https")).host;
@@ -102,10 +94,13 @@ function mongoHost(uri: string): string {
 export async function connectDb(): Promise<Db> {
   if (database) return database;
 
-  const uri = mongoUri();
-  const fromEnv = Boolean(process.env.MONGODB_URI?.trim());
+  const uri = process.env.MONGODB_URI?.trim();
+  if (!uri) {
+    throw new Error("MONGODB_URI не задан. Добавьте его в server/.env или в переменные Railway.");
+  }
+
   console.log(
-    `Mongo connecting host=${mongoHost(uri)} source=${fromEnv ? "env" : "hardcoded"} node=${process.version} openssl=${process.versions.openssl} ipv4`,
+    `Mongo connecting host=${mongoHost(uri)} node=${process.version} openssl=${process.versions.openssl} ipv4`,
   );
 
   client = new MongoClient(uri, {

@@ -32,8 +32,47 @@ export function isAnswerKeyComplete(question: Question): boolean {
   }
 }
 
-export function keyedCount(questions: Question[]): number {
-  return questions.filter(isAnswerKeyComplete).length;
+export function nextQuestionId(questions: Question[]): number {
+  return questions.reduce((max, q) => Math.max(max, q.id), 0) + 1;
+}
+
+export function createBlankQuestion(
+  id: number,
+  type: QuestionType = "single_choice",
+): Question {
+  const options = [
+    { id: "A", label: "" },
+    { id: "B", label: "" },
+    { id: "C", label: "" },
+    { id: "D", label: "" },
+  ];
+  if (type === "matching") {
+    return {
+      id,
+      type,
+      text: "",
+      rows: [
+        { id: "1", label: "" },
+        { id: "2", label: "" },
+      ],
+      options,
+      correctAnswers: {},
+    };
+  }
+  if (type === "multiple_choice") {
+    return { id, type, text: "", options, correctAnswers: [] };
+  }
+  return { id, type: "single_choice", text: "", options, correctAnswer: "" };
+}
+
+export function slugFromTitle(title: string): string {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return slug || `test-${Date.now().toString(36)}`;
 }
 
 export function convertQuestionType(

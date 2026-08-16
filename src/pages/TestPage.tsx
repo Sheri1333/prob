@@ -199,6 +199,7 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
           onClick={() => setMapOpen(false)}
         >
           <div className="exam-map__panel" onClick={(e) => e.stopPropagation()}>
+            <div className="exam-map__handle" aria-hidden="true" />
             <div className="exam-map__head">
               <h3>{t("questionMap", lang)}</h3>
               <button type="button" onClick={() => setMapOpen(false)}>
@@ -209,6 +210,20 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
               {t("answered", lang)}: {answeredIndexes.size} {t("of", lang)}{" "}
               {test.questions.length}
             </p>
+            <div className="exam-map__legend">
+              <span>
+                <i className="exam-map__swatch exam-map__swatch--active" />
+                {lang === "kz" ? "Қазіргі" : "Текущий"}
+              </span>
+              <span>
+                <i className="exam-map__swatch exam-map__swatch--done" />
+                {t("answered", lang)}
+              </span>
+              <span>
+                <i className="exam-map__swatch" />
+                {t("unanswered", lang)}
+              </span>
+            </div>
             <div className="exam-map__grid">
               {test.questions.map((q, i) => (
                 <button

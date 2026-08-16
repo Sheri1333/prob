@@ -20,6 +20,8 @@ interface ResultsPageProps {
   lang: Lang;
 }
 
+const SHOW_ERROR_REVIEW = false;
+
 function formatAnswer(question: Question, answer: AnswerValue | undefined): string {
   if (answer === undefined) return "—";
 
@@ -116,39 +118,41 @@ export function ResultsPage({ lang }: ResultsPageProps) {
         </div>
       </section>
 
-      <section className="results-breakdown">
-        <h2>{lang === "kz" ? "Жауаптар талдауы" : "Разбор ответов"}</h2>
-        <div className="results-list">
-          {state.questions.map((question) => {
-            const userAnswer = state.answers[question.id];
-            const correct = results[question.id];
-            return (
-              <article
-                key={question.id}
-                className={`result-item ${correct ? "result-item--ok" : "result-item--bad"}`}
-              >
-                <div className="result-item__head">
-                  <span>№{question.id}</span>
-                  <span>
-                    {correct ? t("correct", lang) : t("incorrect", lang)}
-                  </span>
-                </div>
-                <p className="result-item__question">{question.text}</p>
-                <p>
-                  <strong>{t("yourAnswer", lang)}:</strong>{" "}
-                  {formatAnswer(question, userAnswer) || t("unanswered", lang)}
-                </p>
-                {!correct && (
+      {SHOW_ERROR_REVIEW && (
+        <section className="results-breakdown">
+          <h2>{lang === "kz" ? "Жауаптар талдауы" : "Разбор ответов"}</h2>
+          <div className="results-list">
+            {state.questions.map((question) => {
+              const userAnswer = state.answers[question.id];
+              const correct = results[question.id];
+              return (
+                <article
+                  key={question.id}
+                  className={`result-item ${correct ? "result-item--ok" : "result-item--bad"}`}
+                >
+                  <div className="result-item__head">
+                    <span>№{question.id}</span>
+                    <span>
+                      {correct ? t("correct", lang) : t("incorrect", lang)}
+                    </span>
+                  </div>
+                  <p className="result-item__question">{question.text}</p>
                   <p>
-                    <strong>{t("correctAnswer", lang)}:</strong>{" "}
-                    {formatCorrect(question)}
+                    <strong>{t("yourAnswer", lang)}:</strong>{" "}
+                    {formatAnswer(question, userAnswer) || t("unanswered", lang)}
                   </p>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </section>
+                  {!correct && (
+                    <p>
+                      <strong>{t("correctAnswer", lang)}:</strong>{" "}
+                      {formatCorrect(question)}
+                    </p>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="results-page__links">
         <Link to="/" className="results-page__back">

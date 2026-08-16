@@ -462,11 +462,17 @@ select {
   min-width: 1.5rem;
 }
 
+.matching-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
 .matching-row {
   display: grid;
-  grid-template-columns: 1fr 7rem;
-  gap: 0.75rem;
-  align-items: center;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+  align-items: stretch;
   padding: 1rem;
   border: 1px solid rgba(195, 197, 217, 0.5);
   border-radius: 0.75rem;
@@ -479,11 +485,13 @@ select {
 
 .matching-row__select {
   width: 100%;
-  padding: 0.7rem 0.85rem;
+  min-width: 0;
+  padding: 0.75rem 0.9rem;
   border: 1px solid var(--exam-outline);
   border-radius: 0.5rem;
   background: var(--exam-surface);
   color: var(--exam-on-surface);
+  font-size: 0.95rem;
 }
 
 .exam-footer {
@@ -594,19 +602,28 @@ select {
   inset: 0;
   z-index: 50;
   background: rgba(19, 27, 46, 0.45);
-  display: grid;
-  place-items: center;
-  padding: 1.25rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
 }
 
 .exam-map__panel {
-  width: min(640px, 100%);
-  max-height: 80vh;
+  width: 100%;
+  max-height: min(88vh, 100%);
   overflow: auto;
   background: #fff;
-  border-radius: 1.25rem;
-  padding: 1.25rem;
-  box-shadow: 0 20px 50px rgba(19, 27, 46, 0.18);
+  border-radius: 1.25rem 1.25rem 0 0;
+  padding: 0.5rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 40px rgba(19, 27, 46, 0.16);
+}
+
+.exam-map__handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: #d8dbe8;
+  margin: 0.35rem auto 0.75rem;
 }
 
 .exam-map__head {
@@ -639,19 +656,54 @@ select {
   font-size: 0.9rem;
 }
 
+.exam-map__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin: 0 0 0.9rem;
+  font-size: 0.78rem;
+  color: var(--exam-on-variant);
+}
+
+.exam-map__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.exam-map__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--exam-outline);
+  background: #fff;
+}
+
+.exam-map__swatch--done {
+  background: #dde1ff;
+  border-color: #b7c4ff;
+}
+
+.exam-map__swatch--active {
+  background: var(--exam-primary-container);
+  border-color: var(--exam-primary-container);
+}
+
 .exam-map__grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 0.45rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
 }
 
 .exam-map__cell {
+  min-height: 48px;
   aspect-ratio: 1;
   border: 1px solid var(--exam-outline);
   background: #fff;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 650;
+  font-size: 0.95rem;
   color: var(--exam-on-surface);
 }
 
@@ -875,7 +927,7 @@ select {
 
 .admin-page {
   min-height: 100vh;
-  background: #f0f3f8;
+  background: #eef2f8;
 }
 
 .admin-header {
@@ -883,42 +935,61 @@ select {
   flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
-  background: #1a3a6b;
+  background: #0f2747;
   color: var(--white);
-  padding: 0.85rem 1.25rem;
+  padding: 0.85rem 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.admin-header__brand {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 5.5rem;
+}
+
+.admin-header__brand strong {
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+}
+
+.admin-header__brand span {
+  font-size: 0.72rem;
+  opacity: 0.65;
 }
 
 .admin-header__user {
-  display: block;
   font-size: 0.8rem;
-  opacity: 0.8;
+  opacity: 0.75;
 }
 
 .admin-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.3rem;
   flex: 1;
 }
 
 .admin-nav button {
   background: transparent;
-  border: 1px solid transparent;
-  color: var(--white);
-  padding: 0.4rem 0.7rem;
-  border-radius: 4px;
+  border: none;
+  color: rgba(255, 255, 255, 0.78);
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
   cursor: pointer;
 }
 
 .admin-nav button.active,
 .admin-nav button:hover {
-  border-color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
 }
 
 .admin-header__actions {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.6rem;
   align-items: center;
 }
 
@@ -926,31 +997,165 @@ select {
 .admin-header__actions button {
   color: var(--white);
   background: none;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 4px;
-  padding: 0.3rem 0.6rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 0.32rem 0.75rem;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
 }
 
 .admin-main {
-  max-width: 1100px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 1.25rem;
+  padding: 1.5rem 1.25rem 3rem;
+}
+
+.admin-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.admin-page-head h1 {
+  margin: 0;
+  font-size: 1.55rem;
+}
+
+.admin-page-head p {
+  margin: 0.2rem 0 0;
+  color: #5c6b82;
+}
+
+.admin-panel {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0.5rem 0.75rem 0.75rem;
+  overflow: auto;
+}
+
+.admin-panel h2 {
+  margin: 0.75rem 0.4rem 0.5rem;
+  font-size: 1rem;
+}
+
+.admin-empty {
+  background: #fff;
+  border: 1px dashed #c5d0e0;
+  border-radius: 14px;
+  padding: 2.5rem 1.25rem;
+  text-align: center;
+  color: #5c6b82;
+}
+
+.admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid #cfd8e6;
+  background: #fff;
+  color: #1a3a6b;
+  border-radius: 10px;
+  padding: 0.55rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-btn:hover {
+  background: #f4f7fb;
+}
+
+.admin-btn--primary {
+  background: #1a5aa8;
+  border-color: #1a5aa8;
+  color: #fff;
+}
+
+.admin-btn--primary:hover {
+  background: #154a8c;
+}
+
+.admin-btn--primary:disabled,
+.admin-btn--save:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.admin-btn--save {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.85rem;
+  font-size: 1rem;
+}
+
+.admin-create-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.admin-create-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.35rem 1.4rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  box-shadow: 0 8px 24px rgba(15, 39, 71, 0.05);
+}
+
+.admin-create-card h2 {
+  margin: 0;
+}
+
+.admin-create-card p {
+  margin: 0;
+  color: #5c6b82;
+  flex: 1;
+}
+
+.admin-add-q {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.admin-add-q select {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #cfd8e6;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.admin-q__delete {
+  margin-top: 0.85rem;
+  border: none;
+  background: none;
+  color: #c62828;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
 }
 
 .admin-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.85rem;
   margin-bottom: 1.5rem;
 }
 
 .admin-stat {
   background: var(--white);
-  border-radius: 8px;
-  padding: 1rem;
-  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.1rem 1.15rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 20px rgba(15, 39, 71, 0.04);
 }
 
 .admin-stat strong {
@@ -1065,10 +1270,16 @@ select {
 
 .admin-preview {
   background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1.25rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.35rem 1.4rem 1.5rem;
   margin-bottom: 1.5rem;
+  box-shadow: 0 8px 24px rgba(15, 39, 71, 0.05);
+}
+
+.admin-preview h2 {
+  margin: 0 0 0.85rem;
+  font-size: 1.05rem;
 }
 
 .admin-preview__stats {
@@ -1496,6 +1707,16 @@ select {
     grid-template-columns: 1fr 1fr;
   }
 
+  .admin-create-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .matching-row {
+    grid-template-columns: minmax(0, 1fr) minmax(11.5rem, 14rem);
+    align-items: center;
+    gap: 1rem;
+  }
+
   .exam-footer {
     padding: 1.5rem 40px;
   }
@@ -1506,6 +1727,33 @@ select {
 
   .exam-footer__map-label {
     display: inline;
+  }
+
+  .exam-map {
+    align-items: center;
+    padding: 1.25rem;
+  }
+
+  .exam-map__panel {
+    width: min(640px, 100%);
+    max-height: 80vh;
+    border-radius: 1.25rem;
+    padding: 1.25rem;
+  }
+
+  .exam-map__handle {
+    display: none;
+  }
+
+  .exam-map__grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .exam-map__cell {
+    min-height: 0;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
   }
 
   .results-summary {

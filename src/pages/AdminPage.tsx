@@ -1,41 +1,32 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
-import type { Question, TestDefinition } from "../types/test";
-import { isAnswerKeyComplete, keyedCount } from "../utils/answerKey";
+import type { Question, QuestionType, TestDefinition } from "../types/test";
+import {
+  createBlankQuestion,
+  isAnswerKeyComplete,
+  keyedCount,
+  nextQuestionId,
+  slugFromTitle,
+} from "../utils/answerKey";
 
-type Tab = "dashboard" | "tests" | "users" | "attempts" | "upload";
-
+type Tab = "dashboard" | "tests" | "editor" | "users" | "attempts";
 type ParseResult = Awaited<ReturnType<typeof api.adminParsePdf>>;
 
-const EMPTY_JSON = `{
-  "id": "ent-new-subject",
-  "title": "ЕНТ — Новый предмет",
-  "titleKz": "ҰБТ — Жаңа пән",
-  "section": "Предмет",
-  "examType": "ENT",
-  "subject": "Предмет",
-  "durationMinutes": 50,
-  "isFree": true,
-  "priceTenge": null,
-  "description": "Описание теста",
-  "questions": [
-    {
-      "id": 1,
-      "type": "single_choice",
-      "text": "Текст вопроса",
-      "options": [
-        { "id": "A", "label": "Вариант A" },
-        { "id": "B", "label": "Вариант B" },
-        { "id": "C", "label": "Вариант C" },
-        { "id": "D", "label": "Вариант D" }
-      ],
-      "correctAnswer": "A"
-    }
-  ]
-}`;
+const EMPTY_META = {
+  id: "",
+  title: "",
+  titleKz: "",
+  section: "",
+  subject: "",
+  examType: "ENT",
+  durationMinutes: 50,
+  isFree: true,
+  priceTenge: "" as string,
+  description: "",
+};
 
 export function AdminPage() {
   const { user, loading, isAdmin, logout } = useAuth();
@@ -55,26 +46,14 @@ export function AdminPage() {
   const [tests, setTests] = useState<
     Awaited<ReturnType<typeof api.adminTests>>["tests"]
   >([]);
-  const [jsonText, setJsonText] = useState(EMPTY_JSON);
-  const [uploading, setUploading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [savingPreview, setSavingPreview] = useState(false);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [draftQuestions, setDraftQuestions] = useState<Question[]>([]);
   const [onlyMissing, setOnlyMissing] = useState(false);
-  const [previewMeta, setPreviewMeta] = useState({
-    id: "",
-    title: "",
-    titleKz: "",
-    section: "",
-    subject: "",
-    examType: "ENT",
-    durationMinutes: 50,
-    isFree: true,
-    priceTenge: "" as string,
-    description: "",
-  });
+  const [previewMeta, setPreviewMeta] = useState(EMPTY_META);
   const [openPreviewId, setOpenPreviewId] = useState<number | null>(1);
+  const [addType, setAddType] = useState<QuestionType>("single_choice");
 
   const load = useCallback(async () => {
     setError("");
@@ -82,7 +61,7 @@ export function AdminPage() {
       if (tab === "dashboard") setStats(await api.adminStats());
       if (tab === "users") setUsers((await api.adminUsers()).users);
       if (tab === "attempts") setAttempts((await api.adminAttempts()).attempts);
-      if (tab === "tests" || tab === "upload") {
+      if (tab === "tests" || tab === "editor") {
         setTests((await api.adminTests()).tests);
       }
     } catch (e) {
@@ -98,6 +77,7 @@ export function AdminPage() {
     () => keyedCount(draftQuestions),
     [draftQuestions],
   );
+  const editing = draftQuestions.length > 0;
 
   if (loading) {
     return <div className="page page--center">Загрузка...</div>;
@@ -114,40 +94,41 @@ export function AdminPage() {
     );
   }
 
-  async function handleSaveJson(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    setMessage("");
-    try {
-      const parsed = JSON.parse(jsonText) as TestDefinition & {
-        description?: string;
-      };
-      await api.adminSaveTest(parsed);
-      setMessage(
-        `Тест «${parsed.id}» сохранён (${parsed.questions?.length ?? 0} вопросов)`,
-      );
-      setTests((await api.adminTests()).tests);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка сохранения");
-    }
+  function resetEditor() {
+    setParseResult(null);
+    setDraftQuestions([]);
+    setPreviewMeta(EMPTY_META);
+    setOnlyMissing(false);
+    setOpenPreviewId(null);
   }
 
-  async function handleJsonFile(file: File | null) {
-    if (!file) return;
-    setUploading(true);
+  function startManual() {
+    const first = createBlankQuestion(1);
+    setParseResult(null);
+    setDraftQuestions([first]);
+    setPreviewMeta(EMPTY_META);
+    setOnlyMissing(false);
+    setOpenPreviewId(1);
+    setTab("editor");
     setError("");
-    setMessage("");
-    try {
-      const result = await api.adminUploadTest(file);
-      setMessage(
-        `Загружен тест «${result.id}» (${result.questionCount} вопросов)`,
-      );
-      setTests((await api.adminTests()).tests);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка загрузки");
-    } finally {
-      setUploading(false);
-    }
+    setMessage("Заполните карточку теста и добавьте вопросы.");
+  }
+
+  function addQuestion() {
+    const id = nextQuestionId(draftQuestions);
+    const q = createBlankQuestion(id, addType);
+    setDraftQuestions((prev) => [...prev, q]);
+    setOpenPreviewId(id);
+  }
+
+  function removeQuestion(index: number) {
+    setDraftQuestions((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (openPreviewId === prev[index]?.id) {
+        setOpenPreviewId(next[next.length - 1]?.id ?? null);
+      }
+      return next;
+    });
   }
 
   async function handlePdfFile(file: File | null) {
@@ -174,30 +155,15 @@ export function AdminPage() {
         description: d.description ?? "",
       });
       setOpenPreviewId(
-        result.draft.questions.find((q) => {
-          if (q.type === "single_choice") return !q.correctAnswer;
-          if (q.type === "multiple_choice") {
-            return !q.correctAnswers?.length;
-          }
-          return !q.correctAnswers || Object.keys(q.correctAnswers).length === 0;
-        })?.id ??
+        result.draft.questions.find((q) => !isAnswerKeyComplete(q))?.id ??
           result.parse.questions[0]?.id ??
           null,
       );
-      setJsonText(
-        JSON.stringify(
-          {
-            ...d,
-            questionCount: d.questions.length,
-          },
-          null,
-          2,
-        ),
-      );
+      setTab("editor");
       setMessage(
-        `PDF разобран: ${result.parse.questions.length} вопросов, жёлтых ключей: ${result.parse.keysFromHighlight ?? 0} (${result.filename})`,
+        `PDF разобран: ${result.parse.questions.length} вопросов, жёлтых ключей: ${result.parse.keysFromHighlight ?? 0}.`,
       );
-      } catch (err) {
+    } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка разбора PDF");
     } finally {
       setParsing(false);
@@ -217,14 +183,17 @@ export function AdminPage() {
         setOpenPreviewId(missing[0]);
         setOnlyMissing(true);
         throw new Error(
-          `Сначала отметьте правильные ответы у вопросов: ${missing.join(", ")}`,
+          `Отметьте правильные ответы у вопросов: ${missing.join(", ")}`,
         );
       }
+      if (!previewMeta.title.trim()) throw new Error("Укажите название теста");
+      if (!previewMeta.subject.trim()) throw new Error("Укажите предмет");
+      const id = previewMeta.id.trim() || slugFromTitle(previewMeta.title);
       const payload: TestDefinition & { description?: string } = {
-        id: previewMeta.id.trim(),
+        id,
         title: previewMeta.title.trim(),
-        titleKz: previewMeta.titleKz.trim(),
-        section: previewMeta.section.trim(),
+        titleKz: previewMeta.titleKz.trim() || previewMeta.title.trim(),
+        section: previewMeta.section.trim() || previewMeta.subject.trim(),
         subject: previewMeta.subject.trim(),
         examType: previewMeta.examType as "ENT" | "OGE",
         durationMinutes: Number(previewMeta.durationMinutes) || 50,
@@ -236,10 +205,10 @@ export function AdminPage() {
         questionCount: draftQuestions.length,
         questions: draftQuestions,
       };
-      if (!payload.id) throw new Error("Укажите ID теста");
       await api.adminSaveTest(payload);
+      setPreviewMeta((m) => ({ ...m, id }));
       setMessage(
-        `Тест «${payload.id}» сохранён (${payload.questions.length} вопросов, все ключи заполнены).`,
+        `Тест «${payload.title}» сохранён · ${payload.questions.length} вопросов`,
       );
       setTests((await api.adminTests()).tests);
     } catch (err) {
@@ -260,10 +229,9 @@ export function AdminPage() {
     }
   }
 
-  async function loadTestJson(id: string) {
+  async function loadTestForEdit(id: string) {
     try {
       const { test } = await api.adminGetTest(id);
-      setJsonText(JSON.stringify(test, null, 2));
       setParseResult(null);
       setDraftQuestions(test.questions);
       setOnlyMissing(false);
@@ -280,8 +248,8 @@ export function AdminPage() {
         description: "",
       });
       setOpenPreviewId(test.questions[0]?.id ?? null);
-      setTab("upload");
-      setMessage(`Редактор ключей: ${id}`);
+      setTab("editor");
+      setMessage(`Редактирование: ${test.title}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     }
@@ -290,16 +258,16 @@ export function AdminPage() {
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <div>
-          <strong>PROB Admin</strong>
-          <span className="admin-header__user">{user.email}</span>
+        <div className="admin-header__brand">
+          <strong>PROB</strong>
+          <span>Админка</span>
         </div>
         <nav className="admin-nav">
           {(
             [
               ["dashboard", "Обзор"],
               ["tests", "Тесты"],
-              ["upload", "Загрузка"],
+              ["editor", "Создать"],
               ["users", "Пользователи"],
               ["attempts", "Результаты"],
             ] as const
@@ -315,6 +283,7 @@ export function AdminPage() {
           ))}
         </nav>
         <div className="admin-header__actions">
+          <span className="admin-header__user">{user.email}</span>
           <Link to="/">Сайт</Link>
           <button type="button" onClick={logout}>
             Выйти
@@ -328,7 +297,10 @@ export function AdminPage() {
 
         {tab === "dashboard" && stats && (
           <section>
-            <h1>Обзор</h1>
+            <div className="admin-page-head">
+              <h1>Обзор</h1>
+              <p>Сводка по платформе пробных тестов</p>
+            </div>
             <div className="admin-stats">
               <div className="admin-stat">
                 <span>Пользователи</span>
@@ -349,7 +321,7 @@ export function AdminPage() {
             </div>
 
             <div className="admin-grid-2">
-              <div>
+              <div className="admin-panel">
                 <h2>Недавние регистрации</h2>
                 <table className="admin-table">
                   <thead>
@@ -372,7 +344,7 @@ export function AdminPage() {
                   </tbody>
                 </table>
               </div>
-              <div>
+              <div className="admin-panel">
                 <h2>Лучшие результаты</h2>
                 <table className="admin-table">
                   <thead>
@@ -405,167 +377,161 @@ export function AdminPage() {
 
         {tab === "tests" && (
           <section>
-            <h1>Тесты</h1>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Название</th>
-                  <th>Предмет</th>
-                  <th>Вопросов</th>
-                  <th>Цена</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {tests.map((t) => (
-                  <tr key={t.id}>
-                    <td>
-                      <code>{t.id}</code>
-                    </td>
-                    <td>{t.title}</td>
-                    <td>{t.subject}</td>
-                    <td>{t.questionCount}</td>
-                    <td>{t.isFree ? "бесплатно" : `${t.priceTenge} ₸`}</td>
-                    <td className="admin-table__actions">
-                      <button type="button" onClick={() => loadTestJson(t.id)}>
-                        Редактировать
-                      </button>
-                      <button
-                        type="button"
-                        className="danger"
-                        onClick={() => handleDelete(t.id)}
-                      >
-                        Удалить
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="admin-page-head">
+              <div>
+                <h1>Тесты</h1>
+                <p>{tests.length} в каталоге</p>
+              </div>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                onClick={startManual}
+              >
+                Создать тест
+              </button>
+            </div>
+            {tests.length === 0 ? (
+              <div className="admin-empty">
+                Пока нет тестов. Создайте вручную или загрузите PDF.
+              </div>
+            ) : (
+              <div className="admin-panel">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Название</th>
+                      <th>Предмет</th>
+                      <th>Вопросов</th>
+                      <th>Доступ</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tests.map((t) => (
+                      <tr key={t.id}>
+                        <td>
+                          <strong>{t.title}</strong>
+                          <br />
+                          <small>{t.id}</small>
+                        </td>
+                        <td>{t.subject}</td>
+                        <td>{t.questionCount}</td>
+                        <td>{t.isFree ? "бесплатно" : `${t.priceTenge} ₸`}</td>
+                        <td className="admin-table__actions">
+                          <button
+                            type="button"
+                            onClick={() => void loadTestForEdit(t.id)}
+                          >
+                            Править
+                          </button>
+                          <button
+                            type="button"
+                            className="danger"
+                            onClick={() => void handleDelete(t.id)}
+                          >
+                            Удалить
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
 
-        {tab === "upload" && (
+        {tab === "editor" && (
           <section>
-            <h1>Загрузка теста</h1>
-
-            <div className="admin-pdf-zone">
-              <h2>1. PDF из НЦТ / пробника</h2>
-              <p className="admin-hint">
-                Парсер вытаскивает вопросы, варианты и картинки. Если правильный
-                ответ выделен жёлтым маркером в PDF — ключ подставится сам.
-                Проверьте и поправьте в шаге 2, затем сохраните.
-              </p>
-              <label className="admin-upload__btn admin-upload__btn--pdf">
-                {parsing ? "Разбор PDF..." : "Выбрать PDF"}
-                <input
-                  type="file"
-                  accept="application/pdf,.pdf"
-                  hidden
-                  disabled={parsing}
-                  onChange={(e) => {
-                    void handlePdfFile(e.target.files?.[0] ?? null);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
+            <div className="admin-page-head">
+              <div>
+                <h1>{editing ? "Редактор теста" : "Новый тест"}</h1>
+                <p>
+                  {editing
+                    ? "Проверьте карточку, вопросы и ключи ответов"
+                    : "Создайте вручную или разберите PDF пробника"}
+                </p>
+              </div>
+              {editing && (
+                <button
+                  type="button"
+                  className="admin-btn"
+                  onClick={resetEditor}
+                >
+                  Начать заново
+                </button>
+              )}
             </div>
 
-            {draftQuestions.length > 0 && (
-              <div className="admin-preview">
-                <h2>2. Ключи ответов</h2>
-                {parseResult && (
-                  <>
-                    <div className="admin-preview__stats">
-                      <span>
-                        Файл: <strong>{parseResult.filename}</strong>
-                      </span>
-                      <span>
-                        Страниц: <strong>{parseResult.parse.pages}</strong>
-                      </span>
-                      <span>
-                        Вопросов:{" "}
-                        <strong>{parseResult.parse.questions.length}</strong>
-                      </span>
-                      <span>
-                        Одиночных:{" "}
-                        <strong>{parseResult.parse.byType.single_choice}</strong>
-                      </span>
-                      <span>
-                        Сопоставление:{" "}
-                        <strong>{parseResult.parse.byType.matching}</strong>
-                      </span>
-                      <span>
-                        Множественных:{" "}
-                        <strong>
-                          {parseResult.parse.byType.multiple_choice}
-                        </strong>
-                      </span>
-                      <span>
-                        Картинок:{" "}
-                        <strong>{parseResult.parse.imagesAttached ?? 0}</strong>
-                      </span>
-                      <span>
-                        Жёлтых ключей:{" "}
-                        <strong>{parseResult.parse.keysFromHighlight ?? 0}</strong>
-                      </span>
-                    </div>
-                    <div className="admin-preview__pipeline">
-                      {parseResult.parse.steps.map((s) => (
-                        <div key={s.step} className="admin-preview__step">
-                          <strong>
-                            {s.step}. {s.name}
-                          </strong>
-                          <span>{s.detail}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-
-                <div className="admin-key-progress">
-                  <div>
-                    Отмечено ключей:{" "}
-                    <strong>
-                      {keyProgress} / {draftQuestions.length}
-                    </strong>
-                  </div>
-                  <div className="admin-key-progress__bar">
-                    <div
-                      style={{
-                        width: `${
-                          draftQuestions.length
-                            ? (100 * keyProgress) / draftQuestions.length
-                            : 0
-                        }%`,
+            {!editing && (
+              <div className="admin-create-grid">
+                <article className="admin-create-card">
+                  <h2>Вручную</h2>
+                  <p>
+                    Название, предмет, вопросы и правильные ответы — всё в форме,
+                    без JSON.
+                  </p>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--primary"
+                    onClick={startManual}
+                  >
+                    Создать пустой тест
+                  </button>
+                </article>
+                <article className="admin-create-card">
+                  <h2>Из PDF</h2>
+                  <p>
+                    Парсер вытащит вопросы и картинки. Жёлтый маркер в PDF
+                    станет ключом — останется проверить.
+                  </p>
+                  <label className="admin-btn admin-btn--primary">
+                    {parsing ? "Разбор PDF..." : "Выбрать PDF"}
+                    <input
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      hidden
+                      disabled={parsing}
+                      onChange={(e) => {
+                        void handlePdfFile(e.target.files?.[0] ?? null);
+                        e.target.value = "";
                       }}
                     />
-                  </div>
-                  <label className="admin-key-progress__filter">
-                    <input
-                      type="checkbox"
-                      checked={onlyMissing}
-                      onChange={(e) => setOnlyMissing(e.target.checked)}
-                    />
-                    Только без ключа
                   </label>
-                </div>
+                </article>
+              </div>
+            )}
 
+            {editing && (
+              <div className="admin-preview">
+                {parseResult && (
+                  <div className="admin-preview__stats">
+                    <span>
+                      Файл: <strong>{parseResult.filename}</strong>
+                    </span>
+                    <span>
+                      Страниц: <strong>{parseResult.parse.pages}</strong>
+                    </span>
+                    <span>
+                      Вопросов:{" "}
+                      <strong>{parseResult.parse.questions.length}</strong>
+                    </span>
+                    <span>
+                      Жёлтых ключей:{" "}
+                      <strong>
+                        {parseResult.parse.keysFromHighlight ?? 0}
+                      </strong>
+                    </span>
+                  </div>
+                )}
+
+                <h2>Карточка теста</h2>
                 <div className="admin-meta-form">
-                  <label>
-                    ID
-                    <input
-                      value={previewMeta.id}
-                      onChange={(e) =>
-                        setPreviewMeta((m) => ({ ...m, id: e.target.value }))
-                      }
-                    />
-                  </label>
                   <label>
                     Название (RU)
                     <input
                       value={previewMeta.title}
+                      placeholder="ЕНТ — География"
                       onChange={(e) =>
                         setPreviewMeta((m) => ({ ...m, title: e.target.value }))
                       }
@@ -575,6 +541,7 @@ export function AdminPage() {
                     Название (KZ)
                     <input
                       value={previewMeta.titleKz}
+                      placeholder="ҰБТ — География"
                       onChange={(e) =>
                         setPreviewMeta((m) => ({
                           ...m,
@@ -587,12 +554,23 @@ export function AdminPage() {
                     Предмет
                     <input
                       value={previewMeta.subject}
+                      placeholder="География"
                       onChange={(e) =>
                         setPreviewMeta((m) => ({
                           ...m,
                           subject: e.target.value,
                           section: e.target.value,
                         }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Код (необязательно)
+                    <input
+                      value={previewMeta.id}
+                      placeholder="подставится из названия"
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({ ...m, id: e.target.value }))
                       }
                     />
                   </label>
@@ -607,14 +585,15 @@ export function AdminPage() {
                         }))
                       }
                     >
-                      <option value="ENT">ENT</option>
-                      <option value="OGE">OGE</option>
+                      <option value="ENT">ЕНТ</option>
+                      <option value="OGE">ОГЭ</option>
                     </select>
                   </label>
                   <label>
                     Минут
                     <input
                       type="number"
+                      min={1}
                       value={previewMeta.durationMinutes}
                       onChange={(e) =>
                         setPreviewMeta((m) => ({
@@ -642,6 +621,7 @@ export function AdminPage() {
                     <input
                       value={previewMeta.priceTenge}
                       disabled={previewMeta.isFree}
+                      placeholder="0"
                       onChange={(e) =>
                         setPreviewMeta((m) => ({
                           ...m,
@@ -655,6 +635,7 @@ export function AdminPage() {
                     <textarea
                       rows={2}
                       value={previewMeta.description}
+                      placeholder="Коротко, что в тесте"
                       onChange={(e) =>
                         setPreviewMeta((m) => ({
                           ...m,
@@ -665,18 +646,67 @@ export function AdminPage() {
                   </label>
                 </div>
 
-                <h3>Вопросы — отметьте правильные ответы</h3>
+                <div className="admin-key-progress">
+                  <div>
+                    Ключи ответов:{" "}
+                    <strong>
+                      {keyProgress} / {draftQuestions.length}
+                    </strong>
+                  </div>
+                  <div className="admin-key-progress__bar">
+                    <div
+                      style={{
+                        width: `${
+                          draftQuestions.length
+                            ? (100 * keyProgress) / draftQuestions.length
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                  <label className="admin-key-progress__filter">
+                    <input
+                      type="checkbox"
+                      checked={onlyMissing}
+                      onChange={(e) => setOnlyMissing(e.target.checked)}
+                    />
+                    Только без ключа
+                  </label>
+                </div>
+
+                <h2>Вопросы</h2>
                 <AnswerKeyEditor
                   questions={draftQuestions}
                   onChange={setDraftQuestions}
                   openId={openPreviewId}
                   onOpen={setOpenPreviewId}
                   onlyMissing={onlyMissing}
+                  onRemove={removeQuestion}
                 />
+
+                <div className="admin-add-q">
+                  <select
+                    value={addType}
+                    onChange={(e) =>
+                      setAddType(e.target.value as QuestionType)
+                    }
+                  >
+                    <option value="single_choice">Один ответ</option>
+                    <option value="multiple_choice">Несколько ответов</option>
+                    <option value="matching">Сопоставление</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="admin-btn"
+                    onClick={addQuestion}
+                  >
+                    Добавить вопрос
+                  </button>
+                </div>
 
                 <button
                   type="button"
-                  className="auth-card__btn"
+                  className="admin-btn admin-btn--primary admin-btn--save"
                   disabled={savingPreview || keyProgress < draftQuestions.length}
                   onClick={() => void handleSavePreview()}
                 >
@@ -684,126 +714,95 @@ export function AdminPage() {
                     ? "Сохранение..."
                     : keyProgress < draftQuestions.length
                       ? `Отметьте ключи (${keyProgress}/${draftQuestions.length})`
-                      : `Сохранить тест (${draftQuestions.length} вопросов)`}
+                      : `Сохранить тест (${draftQuestions.length})`}
                 </button>
               </div>
             )}
-
-            <hr className="admin-divider" />
-
-            <h2>JSON вручную</h2>
-            <p className="admin-hint">
-              Для готового файла с уже проставленными ключами. Без правильных
-              ответов сервер тест не сохранит.
-            </p>
-            <div className="admin-upload">
-              <label className="admin-upload__btn">
-                {uploading ? "Загрузка..." : "Выбрать JSON-файл"}
-                <input
-                  type="file"
-                  accept="application/json,.json"
-                  hidden
-                  disabled={uploading}
-                  onChange={(e) => {
-                    void handleJsonFile(e.target.files?.[0] ?? null);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </div>
-
-            <form onSubmit={handleSaveJson} className="admin-json-form">
-              <textarea
-                value={jsonText}
-                onChange={(e) => setJsonText(e.target.value)}
-                rows={16}
-                spellCheck={false}
-              />
-              <button type="submit" className="auth-card__btn">
-                Сохранить JSON
-              </button>
-            </form>
           </section>
         )}
 
         {tab === "users" && (
           <section>
-            <h1>Пользователи</h1>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Имя</th>
-                  <th>Email</th>
-                  <th>Роль</th>
-                  <th>Регистрация</th>
-                  <th>Попыток</th>
-                  <th>Средний %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.id}</td>
-                    <td>{u.name}</td>
-                    <td>{u.email}</td>
-                    <td>
-                      <span className={`role-badge role-badge--${u.role}`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td>{formatDate(u.createdAt)}</td>
-                    <td>{u.attemptsCount}</td>
-                    <td>{u.avgPercent != null ? `${u.avgPercent}%` : "—"}</td>
+            <div className="admin-page-head">
+              <h1>Пользователи</h1>
+            </div>
+            <div className="admin-panel">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Имя</th>
+                    <th>Email</th>
+                    <th>Роль</th>
+                    <th>Регистрация</th>
+                    <th>Попыток</th>
+                    <th>Средний %</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id}>
+                      <td>{u.name}</td>
+                      <td>{u.email}</td>
+                      <td>
+                        <span className={`role-badge role-badge--${u.role}`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td>{formatDate(u.createdAt)}</td>
+                      <td>{u.attemptsCount}</td>
+                      <td>{u.avgPercent != null ? `${u.avgPercent}%` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
 
         {tab === "attempts" && (
           <section>
-            <h1>Результаты прохождений</h1>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Ученик</th>
-                  <th>Тест</th>
-                  <th>Балл</th>
-                  <th>%</th>
-                  <th>Завершено</th>
-                </tr>
-              </thead>
-              <tbody>
-                {attempts.map((a) => (
-                  <tr key={a.id}>
-                    <td>{a.id}</td>
-                    <td>
-                      {a.userName}
-                      <br />
-                      <small>{a.userEmail}</small>
-                    </td>
-                    <td>
-                      {a.testTitle}
-                      <br />
-                      <small>{a.testId}</small>
-                    </td>
-                    <td>
-                      {a.score}/{a.maxScore}
-                    </td>
-                    <td>
-                      {a.maxScore
-                        ? Math.round((100 * a.score) / a.maxScore)
-                        : 0}
-                      %
-                    </td>
-                    <td>{formatDate(a.finishedAt)}</td>
+            <div className="admin-page-head">
+              <h1>Результаты</h1>
+            </div>
+            <div className="admin-panel">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Ученик</th>
+                    <th>Тест</th>
+                    <th>Балл</th>
+                    <th>%</th>
+                    <th>Завершено</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {attempts.map((a) => (
+                    <tr key={a.id}>
+                      <td>
+                        {a.userName}
+                        <br />
+                        <small>{a.userEmail}</small>
+                      </td>
+                      <td>
+                        {a.testTitle}
+                        <br />
+                        <small>{a.testId}</small>
+                      </td>
+                      <td>
+                        {a.score}/{a.maxScore}
+                      </td>
+                      <td>
+                        {a.maxScore
+                          ? Math.round((100 * a.score) / a.maxScore)
+                          : 0}
+                        %
+                      </td>
+                      <td>{formatDate(a.finishedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
       </main>
