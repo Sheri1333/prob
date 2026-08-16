@@ -2,7 +2,6 @@ import "./tlsSetup.js";
 import cors from "cors";
 import express from "express";
 import { connectDb, isDbReady } from "./db.js";
-import { seedDatabase } from "./seed.js";
 import { UPLOADS_DIR } from "./pdfParser.js";
 import { authRouter } from "./routes/auth.js";
 import { testsRouter } from "./routes/tests.js";
@@ -93,7 +92,6 @@ async function connectLoop(): Promise<void> {
   for (;;) {
     try {
       await connectDb();
-      await seedDatabase();
       return;
     } catch (err) {
       console.error(

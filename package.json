@@ -6,11 +6,10 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "npm run dev --prefix server",
-    "dev:all": "npm run seed --prefix server && npm run dev:server",
+    "dev:all": "npm run dev:server",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "server": "npm run start --prefix server",
-    "seed": "npm install --prefix server && npm run seed --prefix server"
+    "server": "npm run start --prefix server"
   },
   "dependencies": {
     "react": "^19.1.0",

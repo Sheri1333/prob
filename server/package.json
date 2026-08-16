@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
-    "seed": "tsx src/seed.ts"
+    "start": "tsx src/index.ts"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.80",
