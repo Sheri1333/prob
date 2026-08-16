@@ -89,7 +89,10 @@ export async function connectDb(): Promise<Db> {
     throw new Error("MONGODB_URI не задан. Добавьте его в server/.env");
   }
 
-  client = new MongoClient(uri);
+  client = new MongoClient(uri, {
+    serverSelectionTimeoutMS: 20_000,
+    connectTimeoutMS: 20_000,
+  });
   await client.connect();
   database = client.db("prob");
 

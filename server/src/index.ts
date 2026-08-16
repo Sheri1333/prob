@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { connectDb } from "./db.js";
+import { seedDatabase } from "./seed.js";
 import { UPLOADS_DIR } from "./pdfParser.js";
 import { authRouter } from "./routes/auth.js";
 import { testsRouter } from "./routes/tests.js";
@@ -43,6 +44,11 @@ app.use(
 );
 
 await connectDb();
+try {
+  await seedDatabase();
+} catch (err) {
+  console.warn("Seed skipped:", err instanceof Error ? err.message : err);
+}
 app.listen(PORT, () => {
   console.log(`PROB API http://localhost:${PORT}`);
   console.log(`Uploads ${UPLOADS_DIR}`);
