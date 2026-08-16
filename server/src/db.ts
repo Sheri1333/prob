@@ -113,8 +113,6 @@ export async function connectDb(): Promise<Db> {
     connectTimeoutMS: 20_000,
     family: 4,
     autoSelectFamily: false,
-    minVersion: "TLSv1.2",
-    ecdhCurve: "X25519:P-256:P-384:P-521",
     lookup(hostname, _options, callback) {
       dns.lookup(hostname, { family: 4, all: false }, callback);
     },
