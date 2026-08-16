@@ -1,3 +1,4 @@
+import "./tlsSetup.js";
 import cors from "cors";
 import express from "express";
 import { connectDb, isDbReady } from "./db.js";

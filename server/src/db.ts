@@ -4,9 +4,7 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Question } from "./scoring.js";
-
-// Node 17+ prefers IPv6; Atlas SRV often fails TLS handshake (alert 80) unless we force IPv4.
-dns.setDefaultResultOrder("ipv4first");
+import "./tlsSetup.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -107,7 +105,7 @@ export async function connectDb(): Promise<Db> {
   const uri = mongoUri();
   const fromEnv = Boolean(process.env.MONGODB_URI?.trim());
   console.log(
-    `Mongo connecting host=${mongoHost(uri)} source=${fromEnv ? "env" : "hardcoded"} ipv4`,
+    `Mongo connecting host=${mongoHost(uri)} source=${fromEnv ? "env" : "hardcoded"} node=${process.version} openssl=${process.versions.openssl} ipv4`,
   );
 
   client = new MongoClient(uri, {
@@ -115,8 +113,19 @@ export async function connectDb(): Promise<Db> {
     connectTimeoutMS: 20_000,
     family: 4,
     autoSelectFamily: false,
+    minVersion: "TLSv1.2",
+    ecdhCurve: "X25519:P-256:P-384:P-521",
+    lookup(hostname, _options, callback) {
+      dns.lookup(hostname, { family: 4, all: false }, callback);
+    },
   });
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (err) {
+    await client.close().catch(() => undefined);
+    client = null;
+    throw err;
+  }
   database = client.db("prob");
 
   await database.collection<UserDoc>("users").createIndex({ email: 1 }, { unique: true });
