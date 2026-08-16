@@ -32,6 +32,10 @@ export function isAnswerKeyComplete(question: Question): boolean {
   }
 }
 
+export function keyedCount(questions: Question[]): number {
+  return questions.filter(isAnswerKeyComplete).length;
+}
+
 export function nextQuestionId(questions: Question[]): number {
   return questions.reduce((max, q) => Math.max(max, q.id), 0) + 1;
 }
