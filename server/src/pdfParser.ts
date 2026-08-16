@@ -141,24 +141,43 @@ function parseOptions(body: string) {
   return { prompt, options };
 }
 
+/** Left column is 1. 2. …, right column is A) B) C) D). Parser never guesses pairs. */
 function parseMatching(body: string) {
   const firstOpt = body.search(/(?:^|\n)\s*[A-Fa-fА-Фа-ф]\)/);
   const head = firstOpt >= 0 ? body.slice(0, firstOpt) : body;
   const optPart = firstOpt >= 0 ? body.slice(firstOpt) : "";
 
-  const rows: { id: string; label: string }[] = [];
-  const rowRe = /(\d+)\.\s+([^\n]+)/g;
+  const hits: { n: number; index: number; matchLen: number }[] = [];
+  const rowRe = /(\d+)[.)]\s+/g;
   let rm: RegExpExecArray | null;
   while ((rm = rowRe.exec(head))) {
-    rows.push({
-      id: String.fromCharCode(64 + Number(rm[1])),
-      label: cleanText(rm[2]),
-    });
+    const n = Number(rm[1]);
+    if (n >= 1 && n <= 6) {
+      hits.push({ n, index: rm.index, matchLen: rm[0].length });
+    }
   }
 
-  const text = cleanText(head.replace(/(\d+)\.\s+[^\n]+/g, " "));
+  const startIdx = hits.findIndex((h) => h.n === 1);
+  const run: typeof hits = [];
+  if (startIdx >= 0) {
+    run.push(hits[startIdx]);
+    for (let i = startIdx + 1; i < hits.length; i++) {
+      if (hits[i].n === run[run.length - 1].n + 1) run.push(hits[i]);
+      else break;
+    }
+  }
+
+  const prompt = cleanText(
+    run.length > 0 ? head.slice(0, run[0].index) : head,
+  );
+  const rows = run.map((item, i) => {
+    const start = item.index + item.matchLen;
+    const end = i + 1 < run.length ? run[i + 1].index : head.length;
+    return { id: String(item.n), label: cleanText(head.slice(start, end)) };
+  });
+
   const { options } = parseOptions(optPart || body);
-  return { text: text || "Сәйкестендіру", rows, options };
+  return { text: prompt || "Сәйкестендіру", rows, options };
 }
 
 function buildQuestionsFromText(rawText: string) {

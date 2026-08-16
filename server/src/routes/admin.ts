@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
-import { db } from "../db.js";
+import { ObjectId } from "mongodb";
+import { attempts, tests, toObjectId, users } from "../db.js";
 import { adminRequired, type AuthedRequest } from "../auth.js";
 import { validateTestPayload, type Question } from "../scoring.js";
 import {
@@ -18,265 +19,238 @@ const upload = multer({
 
 adminRouter.use(adminRequired);
 
-function upsertTest(payload: ReturnType<typeof validateTestPayload>) {
-  const questionsJson = JSON.stringify(payload.questions);
-  const questionCount = payload.questions.length;
-
-  db.prepare(
-    `INSERT INTO tests (
-      id, title, title_kz, section, exam_type, subject,
-      duration_minutes, question_count, is_free, price_tenge,
-      description, questions_json, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(id) DO UPDATE SET
-      title = excluded.title,
-      title_kz = excluded.title_kz,
-      section = excluded.section,
-      exam_type = excluded.exam_type,
-      subject = excluded.subject,
-      duration_minutes = excluded.duration_minutes,
-      question_count = excluded.question_count,
-      is_free = excluded.is_free,
-      price_tenge = excluded.price_tenge,
-      description = excluded.description,
-      questions_json = excluded.questions_json,
-      updated_at = datetime('now')`,
-  ).run(
-    payload.id,
-    payload.title,
-    payload.titleKz,
-    payload.section,
-    payload.examType,
-    payload.subject,
-    payload.durationMinutes,
-    questionCount,
-    payload.isFree ? 1 : 0,
-    payload.priceTenge ?? null,
-    payload.description ?? "",
-    questionsJson,
+async function upsertTest(payload: ReturnType<typeof validateTestPayload>) {
+  const now = new Date();
+  const existing = await tests().findOne({ _id: payload.id });
+  await tests().updateOne(
+    { _id: payload.id },
+    {
+      $set: {
+        title: payload.title,
+        titleKz: payload.titleKz,
+        section: payload.section,
+        examType: payload.examType,
+        subject: payload.subject,
+        durationMinutes: payload.durationMinutes,
+        questionCount: payload.questions.length,
+        isFree: payload.isFree !== false,
+        priceTenge: payload.priceTenge ?? null,
+        description: payload.description ?? "",
+        questions: payload.questions,
+        updatedAt: now,
+      },
+      $setOnInsert: {
+        createdAt: now,
+      },
+    },
+    { upsert: true },
   );
+  return existing;
 }
 
-adminRouter.get("/stats", (_req, res) => {
-  const users = (
-    db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'user'").get() as {
-      c: number;
-    }
-  ).c;
-  const admins = (
-    db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'admin'").get() as {
-      c: number;
-    }
-  ).c;
-  const tests = (
-    db.prepare("SELECT COUNT(*) AS c FROM tests").get() as { c: number }
-  ).c;
-  const attempts = (
-    db.prepare("SELECT COUNT(*) AS c FROM attempts").get() as { c: number }
-  ).c;
-  const avgScore = (
-    db
-      .prepare(
-        "SELECT ROUND(AVG(100.0 * score / max_score), 1) AS avg FROM attempts WHERE max_score > 0",
-      )
-      .get() as { avg: number | null }
-  ).avg;
+adminRouter.get("/stats", async (_req, res) => {
+  const [userCount, adminCount, testCount, attemptCount, avgAgg, recentUsers, topAttempts] =
+    await Promise.all([
+      users().countDocuments({ role: "user" }),
+      users().countDocuments({ role: "admin" }),
+      tests().countDocuments(),
+      attempts().countDocuments(),
+      attempts()
+        .aggregate<{ avg: number | null }>([
+          { $match: { maxScore: { $gt: 0 } } },
+          {
+            $group: {
+              _id: null,
+              avg: { $avg: { $multiply: [{ $divide: ["$score", "$maxScore"] }, 100] } },
+            },
+          },
+        ])
+        .toArray(),
+      users().find().sort({ createdAt: -1 }).limit(5).toArray(),
+      attempts()
+        .aggregate([
+          { $match: { maxScore: { $gt: 0 } } },
+          {
+            $addFields: {
+              ratio: { $divide: ["$score", "$maxScore"] },
+            },
+          },
+          { $sort: { ratio: -1, finishedAt: -1 } },
+          { $limit: 10 },
+        ])
+        .toArray(),
+    ]);
 
-  const recentUsers = db
-    .prepare(
-      `SELECT id, email, name, role, created_at
-       FROM users ORDER BY created_at DESC LIMIT 5`,
-    )
-    .all();
-
-  const topAttempts = db
-    .prepare(
-      `SELECT a.id, a.score, a.max_score, a.finished_at,
-              u.name AS user_name, u.email AS user_email,
-              t.title AS test_title
-       FROM attempts a
-       JOIN users u ON u.id = a.user_id
-       JOIN tests t ON t.id = a.test_id
-       ORDER BY (1.0 * a.score / a.max_score) DESC, a.finished_at DESC
-       LIMIT 10`,
-    )
-    .all();
+  const userIds = topAttempts.map((a) => a.userId as ObjectId);
+  const testIds = topAttempts.map((a) => a.testId as string);
+  const [userDocs, testDocs] = await Promise.all([
+    userIds.length
+      ? users().find({ _id: { $in: userIds } }).toArray()
+      : Promise.resolve([]),
+    testIds.length
+      ? tests().find({ _id: { $in: testIds } }).toArray()
+      : Promise.resolve([]),
+  ]);
+  const userMap = new Map(userDocs.map((u) => [u._id.toHexString(), u]));
+  const testMap = new Map(testDocs.map((t) => [t._id, t]));
 
   res.json({
     stats: {
-      users,
-      admins,
-      tests,
-      attempts,
-      avgScorePercent: avgScore ?? 0,
+      users: userCount,
+      admins: adminCount,
+      tests: testCount,
+      attempts: attemptCount,
+      avgScorePercent: Math.round((avgAgg[0]?.avg ?? 0) * 10) / 10,
     },
-    recentUsers,
-    topAttempts,
-  });
-});
-
-adminRouter.get("/users", (_req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT u.id, u.email, u.name, u.role, u.created_at,
-              COUNT(a.id) AS attempts_count,
-              ROUND(AVG(CASE WHEN a.max_score > 0 THEN 100.0 * a.score / a.max_score END), 1) AS avg_percent
-       FROM users u
-       LEFT JOIN attempts a ON a.user_id = u.id
-       GROUP BY u.id
-       ORDER BY u.created_at DESC`,
-    )
-    .all();
-
-  res.json({
-    users: rows.map((r) => {
-      const row = r as {
-        id: number;
-        email: string;
-        name: string;
-        role: string;
-        created_at: string;
-        attempts_count: number;
-        avg_percent: number | null;
-      };
+    recentUsers: recentUsers.map((u) => ({
+      id: u._id.toHexString(),
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      created_at: u.createdAt.toISOString(),
+    })),
+    topAttempts: topAttempts.map((a) => {
+      const u = userMap.get((a.userId as ObjectId).toHexString());
+      const t = testMap.get(a.testId as string);
       return {
-        id: row.id,
-        email: row.email,
-        name: row.name,
-        role: row.role,
-        createdAt: row.created_at,
-        attemptsCount: row.attempts_count,
-        avgPercent: row.avg_percent,
+        id: (a._id as ObjectId).toHexString(),
+        score: a.score,
+        max_score: a.maxScore,
+        finished_at: (a.finishedAt as Date).toISOString(),
+        user_name: u?.name ?? "",
+        user_email: u?.email ?? "",
+        test_title: t?.title ?? a.testId,
       };
     }),
   });
 });
 
-adminRouter.get("/attempts", (req, res) => {
-  const userId = req.query.userId ? Number(req.query.userId) : null;
+adminRouter.get("/users", async (_req, res) => {
+  const rows = await users()
+    .aggregate([
+      { $sort: { createdAt: -1 } },
+      {
+        $lookup: {
+          from: "attempts",
+          localField: "_id",
+          foreignField: "userId",
+          as: "attempts",
+        },
+      },
+      {
+        $addFields: {
+          attemptsCount: { $size: "$attempts" },
+          avgPercent: {
+            $avg: {
+              $map: {
+                input: {
+                  $filter: {
+                    input: "$attempts",
+                    as: "a",
+                    cond: { $gt: ["$$a.maxScore", 0] },
+                  },
+                },
+                as: "a",
+                in: {
+                  $multiply: [{ $divide: ["$$a.score", "$$a.maxScore"] }, 100],
+                },
+              },
+            },
+          },
+        },
+      },
+      { $project: { attempts: 0, passwordHash: 0 } },
+    ])
+    .toArray();
+
+  res.json({
+    users: rows.map((row) => ({
+      id: (row._id as ObjectId).toHexString(),
+      email: row.email,
+      name: row.name,
+      role: row.role,
+      createdAt: (row.createdAt as Date).toISOString(),
+      attemptsCount: row.attemptsCount ?? 0,
+      avgPercent:
+        typeof row.avgPercent === "number"
+          ? Math.round(row.avgPercent * 10) / 10
+          : null,
+    })),
+  });
+});
+
+adminRouter.get("/attempts", async (req, res) => {
+  const userIdRaw = typeof req.query.userId === "string" ? req.query.userId : null;
   const testId = typeof req.query.testId === "string" ? req.query.testId : null;
 
-  let sql = `
-    SELECT a.id, a.user_id, a.test_id, a.score, a.max_score,
-           a.started_at, a.finished_at, a.answers_json,
-           u.name AS user_name, u.email AS user_email,
-           t.title AS test_title, t.subject
-    FROM attempts a
-    JOIN users u ON u.id = a.user_id
-    JOIN tests t ON t.id = a.test_id
-    WHERE 1=1`;
-  const params: (string | number)[] = [];
-
-  if (userId) {
-    sql += " AND a.user_id = ?";
-    params.push(userId);
+  const filter: Record<string, unknown> = {};
+  if (userIdRaw) {
+    const oid = toObjectId(userIdRaw);
+    if (oid) filter.userId = oid;
   }
-  if (testId) {
-    sql += " AND a.test_id = ?";
-    params.push(testId);
-  }
-  sql += " ORDER BY a.finished_at DESC LIMIT 200";
+  if (testId) filter.testId = testId;
 
-  const rows = db.prepare(sql).all(...params);
+  const rows = await attempts()
+    .find(filter)
+    .sort({ finishedAt: -1 })
+    .limit(200)
+    .toArray();
+
+  const userIds = [...new Set(rows.map((r) => r.userId.toHexString()))].map(
+    (id) => new ObjectId(id),
+  );
+  const testIds = [...new Set(rows.map((r) => r.testId))];
+  const [userDocs, testDocs] = await Promise.all([
+    userIds.length ? users().find({ _id: { $in: userIds } }).toArray() : [],
+    testIds.length ? tests().find({ _id: { $in: testIds } }).toArray() : [],
+  ]);
+  const userMap = new Map(userDocs.map((u) => [u._id.toHexString(), u]));
+  const testMap = new Map(testDocs.map((t) => [t._id, t]));
 
   res.json({
-    attempts: rows.map((r) => {
-      const row = r as {
-        id: number;
-        user_id: number;
-        test_id: string;
-        score: number;
-        max_score: number;
-        started_at: string;
-        finished_at: string;
-        user_name: string;
-        user_email: string;
-        test_title: string;
-        subject: string;
-      };
+    attempts: rows.map((row) => {
+      const u = userMap.get(row.userId.toHexString());
+      const t = testMap.get(row.testId);
       return {
-        id: row.id,
-        userId: row.user_id,
-        testId: row.test_id,
+        id: row._id.toHexString(),
+        userId: row.userId.toHexString(),
+        testId: row.testId,
         score: row.score,
-        maxScore: row.max_score,
-        startedAt: row.started_at,
-        finishedAt: row.finished_at,
-        userName: row.user_name,
-        userEmail: row.user_email,
-        testTitle: row.test_title,
-        subject: row.subject,
+        maxScore: row.maxScore,
+        startedAt: row.startedAt.toISOString(),
+        finishedAt: row.finishedAt.toISOString(),
+        userName: u?.name ?? "",
+        userEmail: u?.email ?? "",
+        testTitle: t?.title ?? row.testId,
+        subject: t?.subject ?? "",
       };
     }),
   });
 });
 
-adminRouter.get("/tests", (_req, res) => {
-  const rows = db
-    .prepare(
-      `SELECT id, title, title_kz, section, exam_type, subject,
-              duration_minutes, question_count, is_free, price_tenge,
-              description, created_at, updated_at
-       FROM tests ORDER BY updated_at DESC`,
-    )
-    .all();
-
+adminRouter.get("/tests", async (_req, res) => {
+  const rows = await tests().find().sort({ updatedAt: -1 }).toArray();
   res.json({
-    tests: rows.map((r) => {
-      const row = r as {
-        id: string;
-        title: string;
-        title_kz: string;
-        section: string;
-        exam_type: string;
-        subject: string;
-        duration_minutes: number;
-        question_count: number;
-        is_free: number;
-        price_tenge: number | null;
-        description: string;
-        created_at: string;
-        updated_at: string;
-      };
-      return {
-        id: row.id,
-        title: row.title,
-        titleKz: row.title_kz,
-        section: row.section,
-        examType: row.exam_type,
-        subject: row.subject,
-        durationMinutes: row.duration_minutes,
-        questionCount: row.question_count,
-        isFree: Boolean(row.is_free),
-        priceTenge: row.price_tenge,
-        description: row.description,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      };
-    }),
+    tests: rows.map((row) => ({
+      id: row._id,
+      title: row.title,
+      titleKz: row.titleKz,
+      section: row.section,
+      examType: row.examType,
+      subject: row.subject,
+      durationMinutes: row.durationMinutes,
+      questionCount: row.questionCount,
+      isFree: row.isFree,
+      priceTenge: row.priceTenge,
+      description: row.description,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    })),
   });
 });
 
-adminRouter.get("/tests/:id", (req, res) => {
-  const row = db
-    .prepare("SELECT * FROM tests WHERE id = ?")
-    .get(req.params.id) as
-    | {
-        id: string;
-        title: string;
-        title_kz: string;
-        section: string;
-        exam_type: string;
-        subject: string;
-        duration_minutes: number;
-        question_count: number;
-        is_free: number;
-        price_tenge: number | null;
-        description: string;
-        questions_json: string;
-      }
-    | undefined;
-
+adminRouter.get("/tests/:id", async (req, res) => {
+  const row = await tests().findOne({ _id: req.params.id });
   if (!row) {
     res.status(404).json({ error: "Тест не найден" });
     return;
@@ -284,59 +258,60 @@ adminRouter.get("/tests/:id", (req, res) => {
 
   res.json({
     test: {
-      id: row.id,
+      id: row._id,
       title: row.title,
-      titleKz: row.title_kz,
+      titleKz: row.titleKz,
       section: row.section,
-      examType: row.exam_type,
+      examType: row.examType,
       subject: row.subject,
-      durationMinutes: row.duration_minutes,
-      questionCount: row.question_count,
-      isFree: Boolean(row.is_free),
-      priceTenge: row.price_tenge,
+      durationMinutes: row.durationMinutes,
+      questionCount: row.questionCount,
+      isFree: row.isFree,
+      priceTenge: row.priceTenge,
       description: row.description,
-      questions: JSON.parse(row.questions_json) as Question[],
+      questions: row.questions as Question[],
     },
   });
 });
 
-adminRouter.post("/tests", (req: AuthedRequest, res) => {
+adminRouter.post("/tests", async (req: AuthedRequest, res) => {
   try {
     const payload = validateTestPayload(req.body);
     payload.questions = materializeQuestionImages(payload.id, payload.questions);
-    upsertTest(payload);
+    await upsertTest(payload);
     res.status(201).json({ ok: true, id: payload.id });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : "Ошибка" });
   }
 });
 
-adminRouter.put("/tests/:id", (req: AuthedRequest, res) => {
+adminRouter.put("/tests/:id", async (req: AuthedRequest, res) => {
   try {
     const payload = validateTestPayload({ ...req.body, id: req.params.id });
-    const exists = db.prepare("SELECT id FROM tests WHERE id = ?").get(payload.id);
+    const exists = await tests().findOne({ _id: payload.id });
     if (!exists) {
       res.status(404).json({ error: "Тест не найден" });
       return;
     }
     payload.questions = materializeQuestionImages(payload.id, payload.questions);
-    upsertTest(payload);
+    await upsertTest(payload);
     res.json({ ok: true, id: payload.id });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : "Ошибка" });
   }
 });
 
-adminRouter.delete("/tests/:id", (req, res) => {
-  const result = db.prepare("DELETE FROM tests WHERE id = ?").run(req.params.id);
-  if (result.changes === 0) {
+adminRouter.delete("/tests/:id", async (req, res) => {
+  const result = await tests().deleteOne({ _id: req.params.id });
+  if (result.deletedCount === 0) {
     res.status(404).json({ error: "Тест не найден" });
     return;
   }
+  await attempts().deleteMany({ testId: req.params.id });
   res.json({ ok: true });
 });
 
-adminRouter.post("/tests/upload", upload.single("file"), (req, res) => {
+adminRouter.post("/tests/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       res.status(400).json({ error: "Файл не загружен (field: file)" });
@@ -345,7 +320,7 @@ adminRouter.post("/tests/upload", upload.single("file"), (req, res) => {
     const text = req.file.buffer.toString("utf8");
     const json = JSON.parse(text) as unknown;
     const payload = validateTestPayload(json);
-    upsertTest(payload);
+    await upsertTest(payload);
     res.status(201).json({
       ok: true,
       id: payload.id,
@@ -358,7 +333,6 @@ adminRouter.post("/tests/upload", upload.single("file"), (req, res) => {
   }
 });
 
-/** Parse PDF → preview only (does not save). */
 adminRouter.post("/tests/parse-pdf", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -390,7 +364,7 @@ adminRouter.post("/tests/parse-pdf", upload.single("file"), async (req, res) => 
       durationMinutes: 50,
       isFree: true,
       priceTenge: null as number | null,
-      description: `Импорт из PDF «${req.file.originalname}». Правильные ответы ещё не заполнены.`,
+      description: `Импорт из PDF «${req.file.originalname}». Ключи ответов отмечаются вручную в админке.`,
       questions: toTestQuestions(parsed.questions),
     };
 

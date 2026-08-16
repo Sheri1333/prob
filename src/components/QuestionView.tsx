@@ -13,6 +13,7 @@ interface QuestionViewProps {
   lang: Lang;
   answer: AnswerValue | undefined;
   onAnswerChange: (value: AnswerValue) => void;
+  onZoom?: (src: string) => void;
 }
 
 export function QuestionView({
@@ -20,60 +21,67 @@ export function QuestionView({
   lang,
   answer,
   onAnswerChange,
+  onZoom,
 }: QuestionViewProps) {
   return (
-    <div className="question-view">
-      <div className="question-view__watermark">{t("watermark", lang)}</div>
-      <div className="question-view__content">
-        <p className="question-view__text">{question.text}</p>
+    <article className="exam-card">
+      <h2 className="exam-card__title">{question.text}</h2>
 
-        {question.images && question.images.length > 0 && (
-          <div
-            className={`question-view__images ${
-              question.images.length > 1 ? "question-view__images--grid" : ""
-            }`}
-          >
-            {question.images.map((src, i) => (
-              <img
-                key={`${i}-${src.slice(0, 48)}`}
-                src={mediaUrl(src)}
-                alt=""
-                className="question-view__image"
-              />
-            ))}
-          </div>
-        )}
+      {question.images && question.images.length > 0 && (
+        <div
+          className={`exam-card__media ${
+            question.images.length > 1 ? "exam-card__media--grid" : ""
+          }`}
+        >
+          {question.images.map((src, i) => {
+            const url = mediaUrl(src);
+            return (
+              <div key={`${i}-${src.slice(0, 40)}`} className="exam-card__figure">
+                <img src={url} alt="" />
+                {onZoom && (
+                  <button
+                    type="button"
+                    className="exam-card__zoom"
+                    onClick={() => onZoom(url)}
+                  >
+                    <span className="material-symbols-outlined">zoom_in</span>
+                    {t("zoomImage", lang)}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-        {question.type === "single_choice" && (
-          <SingleChoiceQuestion
-            options={question.options}
-            value={typeof answer === "string" ? answer : undefined}
-            onChange={onAnswerChange}
-          />
-        )}
+      {question.type === "single_choice" && (
+        <SingleChoiceQuestion
+          name={`q-${question.id}`}
+          options={question.options}
+          value={typeof answer === "string" ? answer : undefined}
+          onChange={onAnswerChange}
+        />
+      )}
 
-        {question.type === "multiple_choice" && (
-          <MultipleChoiceQuestion
-            options={question.options}
-            value={Array.isArray(answer) ? answer : []}
-            onChange={onAnswerChange}
-          />
-        )}
+      {question.type === "multiple_choice" && (
+        <MultipleChoiceQuestion
+          options={question.options}
+          value={Array.isArray(answer) ? answer : []}
+          onChange={onAnswerChange}
+        />
+      )}
 
-        {question.type === "matching" && (
-          <MatchingQuestion
-            lang={lang}
-            rows={question.rows}
-            options={question.options}
-            value={
-              typeof answer === "object" && !Array.isArray(answer)
-                ? answer
-                : {}
-            }
-            onChange={onAnswerChange}
-          />
-        )}
-      </div>
-    </div>
+      {question.type === "matching" && (
+        <MatchingQuestion
+          lang={lang}
+          rows={question.rows}
+          options={question.options}
+          value={
+            typeof answer === "object" && !Array.isArray(answer) ? answer : {}
+          }
+          onChange={onAnswerChange}
+        />
+      )}
+    </article>
   );
 }

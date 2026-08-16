@@ -23,7 +23,7 @@ export function mediaUrl(src: string): string {
 }
 
 export interface AuthUser {
-  id: number;
+  id: string;
   email: string;
   name: string;
   role: "user" | "admin";
@@ -110,7 +110,7 @@ export const api = {
     }
     return request<{
       attempt: {
-        id: number;
+        id: string;
         testId: string;
         score: number;
         maxScore: number;
@@ -132,7 +132,7 @@ export const api = {
   myAttempts() {
     return request<{
       attempts: Array<{
-        id: number;
+        id: string;
         testId: string;
         score: number;
         maxScore: number;
@@ -155,14 +155,14 @@ export const api = {
         avgScorePercent: number;
       };
       recentUsers: Array<{
-        id: number;
+        id: string;
         email: string;
         name: string;
         role: string;
         created_at: string;
       }>;
       topAttempts: Array<{
-        id: number;
+        id: string;
         score: number;
         max_score: number;
         finished_at: string;
@@ -176,7 +176,7 @@ export const api = {
   adminUsers() {
     return request<{
       users: Array<{
-        id: number;
+        id: string;
         email: string;
         name: string;
         role: string;
@@ -187,15 +187,15 @@ export const api = {
     }>("/admin/users");
   },
 
-  adminAttempts(params?: { userId?: number; testId?: string }) {
+  adminAttempts(params?: { userId?: string; testId?: string }) {
     const q = new URLSearchParams();
     if (params?.userId) q.set("userId", String(params.userId));
     if (params?.testId) q.set("testId", params.testId);
     const qs = q.toString();
     return request<{
       attempts: Array<{
-        id: number;
-        userId: number;
+        id: string;
+        userId: string;
         testId: string;
         score: number;
         maxScore: number;

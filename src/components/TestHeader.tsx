@@ -4,52 +4,53 @@ import { t } from "../i18n/strings";
 interface TestHeaderProps {
   section: string;
   lang: Lang;
-  onToggleLang: () => void;
-  onMenuClick: () => void;
+  current: number;
+  total: number;
   timerSeconds?: number;
-  showTimer?: boolean;
+  onExit: () => void;
+  onToggleLang?: () => void;
+}
+
+function formatTimer(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 export function TestHeader({
   section,
   lang,
-  onToggleLang,
-  onMenuClick,
+  current,
+  total,
   timerSeconds,
-  showTimer,
+  onExit,
+  onToggleLang,
 }: TestHeaderProps) {
-  const timerLabel =
-    timerSeconds !== undefined
-      ? `${Math.floor(timerSeconds / 60)}:${String(timerSeconds % 60).padStart(2, "0")}`
-      : "";
+  const percent = total > 0 ? (current / total) * 100 : 0;
 
   return (
-    <header className="test-header">
-      <button
-        type="button"
-        className="test-header__menu"
-        onClick={onMenuClick}
-        aria-label="Menu"
-      >
-        <span />
-        <span />
-        <span />
-      </button>
-      <div className="test-header__title">
-        {t("section", lang)}: {section}
+    <header className="exam-header">
+      <div className="exam-header__title">{section}</div>
+      <div className="exam-header__progress">
+        <span className="exam-header__count">
+          {current}/{total}
+        </span>
+        <div className="exam-header__bar" aria-hidden>
+          <div className="exam-header__bar-fill" style={{ width: `${percent}%` }} />
+        </div>
       </div>
-      <div className="test-header__right">
-        {showTimer && (
-          <span className="test-header__timer" aria-live="polite">
-            {timerLabel}
-          </span>
+      <div className="exam-header__actions">
+        {timerSeconds !== undefined && (
+          <span className="exam-header__timer">{formatTimer(timerSeconds)}</span>
         )}
-        <button
-          type="button"
-          className="test-header__lang"
-          onClick={onToggleLang}
-        >
-          {lang === "kz" ? "Kz" : "Ru"} ▾
+        {onToggleLang && (
+          <button type="button" className="exam-header__lang" onClick={onToggleLang}>
+            {lang === "kz" ? "RU" : "KZ"}
+          </button>
+        )}
+        <button type="button" className="exam-header__exit" onClick={onExit}>
+          <span className="exam-header__exit-label">{t("exitTest", lang)}</span>
+          <span className="material-symbols-outlined">close</span>
         </button>
       </div>
     </header>

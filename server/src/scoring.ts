@@ -126,6 +126,45 @@ export function scoreTest(
   return { score, maxScore: questions.length, results };
 }
 
+export function isAnswerKeyComplete(question: Question): boolean {
+  switch (question.type) {
+    case "single_choice":
+      return (
+        Boolean(question.correctAnswer) &&
+        question.options.some((o) => o.id === question.correctAnswer)
+      );
+    case "multiple_choice":
+      return (
+        Array.isArray(question.correctAnswers) &&
+        question.correctAnswers.length > 0 &&
+        question.correctAnswers.every((id) =>
+          question.options.some((o) => o.id === id),
+        )
+      );
+    case "matching":
+      return (
+        question.rows.length > 0 &&
+        question.rows.every((row) =>
+          Boolean(question.correctAnswers[row.id]),
+        ) &&
+        question.rows.every((row) =>
+          question.options.some((o) => o.id === question.correctAnswers[row.id]),
+        )
+      );
+    default:
+      return false;
+  }
+}
+
+export function assertAnswerKeys(questions: Question[]): void {
+  const missing = questions.filter((q) => !isAnswerKeyComplete(q)).map((q) => q.id);
+  if (missing.length > 0) {
+    throw new Error(
+      `Отметьте правильные ответы у вопросов: ${missing.join(", ")}`,
+    );
+  }
+}
+
 export function validateTestPayload(body: unknown): TestPayload {
   if (!body || typeof body !== "object") {
     throw new Error("Некорректное тело запроса");
@@ -143,6 +182,7 @@ export function validateTestPayload(body: unknown): TestPayload {
   if (!Array.isArray(b.questions) || b.questions.length === 0) {
     throw new Error("questions должен быть непустым массивом");
   }
+  assertAnswerKeys(b.questions as Question[]);
   return {
     id: b.id.trim(),
     title: b.title,

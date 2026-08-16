@@ -8,7 +8,7 @@ interface ResultsState {
   answers: Record<number, AnswerValue>;
   startedAt: string;
   attempt: {
-    id: number;
+    id: string;
     score: number;
     maxScore: number;
     results: Record<number, boolean>;
@@ -40,11 +40,7 @@ function formatAnswer(question: Question, answer: AnswerValue | undefined): stri
     case "matching": {
       if (typeof answer !== "object" || Array.isArray(answer)) return "—";
       return Object.entries(answer)
-        .map(([rowId, optId]) => {
-          const row = question.rows.find((r) => r.id === rowId);
-          const opt = question.options.find((o) => o.id === optId);
-          return `${row?.label ?? rowId}: ${opt?.label ?? optId}`;
-        })
+        .map(([rowId, optId]) => `${rowId} → ${optId}`)
         .join("; ");
     }
     default:
@@ -68,11 +64,7 @@ function formatCorrect(question: Question): string {
         .join("; ");
     case "matching":
       return Object.entries(question.correctAnswers ?? {})
-        .map(([rowId, optId]) => {
-          const row = question.rows.find((r) => r.id === rowId);
-          const opt = question.options.find((o) => o.id === optId);
-          return `${row?.label ?? rowId}: ${opt?.label ?? optId}`;
-        })
+        .map(([rowId, optId]) => `${rowId} → ${optId}`)
         .join("; ");
     default:
       return "—";

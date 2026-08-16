@@ -1,10 +1,10 @@
 import bcrypt from "bcryptjs";
-import { db } from "./db.js";
+import { closeDb, connectDb, tests, users } from "./db.js";
 import { entGeographyTest } from "../../src/data/tests/ent-geography.ts";
 import { catalog } from "../../src/data/catalog.ts";
 import type { Question } from "./scoring.js";
 
-function upsertTest(params: {
+async function upsertTest(params: {
   id: string;
   title: string;
   titleKz: string;
@@ -17,38 +17,27 @@ function upsertTest(params: {
   description: string;
   questions: Question[];
 }) {
-  db.prepare(
-    `INSERT INTO tests (
-      id, title, title_kz, section, exam_type, subject,
-      duration_minutes, question_count, is_free, price_tenge,
-      description, questions_json, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(id) DO UPDATE SET
-      title = excluded.title,
-      title_kz = excluded.title_kz,
-      section = excluded.section,
-      exam_type = excluded.exam_type,
-      subject = excluded.subject,
-      duration_minutes = excluded.duration_minutes,
-      question_count = excluded.question_count,
-      is_free = excluded.is_free,
-      price_tenge = excluded.price_tenge,
-      description = excluded.description,
-      questions_json = excluded.questions_json,
-      updated_at = datetime('now')`,
-  ).run(
-    params.id,
-    params.title,
-    params.titleKz,
-    params.section,
-    params.examType,
-    params.subject,
-    params.durationMinutes,
-    params.questions.length,
-    params.isFree ? 1 : 0,
-    params.priceTenge ?? null,
-    params.description,
-    JSON.stringify(params.questions),
+  const now = new Date();
+  await tests().updateOne(
+    { _id: params.id },
+    {
+      $set: {
+        title: params.title,
+        titleKz: params.titleKz,
+        section: params.section,
+        examType: params.examType,
+        subject: params.subject,
+        durationMinutes: params.durationMinutes,
+        questionCount: params.questions.length,
+        isFree: params.isFree,
+        priceTenge: params.priceTenge ?? null,
+        description: params.description,
+        questions: params.questions,
+        updatedAt: now,
+      },
+      $setOnInsert: { createdAt: now },
+    },
+    { upsert: true },
   );
 }
 
@@ -57,25 +46,35 @@ const adminPass = "admin123";
 const demoEmail = "demo@prob.kz";
 const demoPass = "demo123";
 
-const adminExists = db.prepare("SELECT id FROM users WHERE email = ?").get(adminEmail);
+await connectDb();
+
+const adminExists = await users().findOne({ email: adminEmail });
 if (!adminExists) {
-  db.prepare(
-    "INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, 'admin')",
-  ).run(adminEmail, bcrypt.hashSync(adminPass, 10), "Администратор");
+  await users().insertOne({
+    email: adminEmail,
+    passwordHash: bcrypt.hashSync(adminPass, 10),
+    name: "Администратор",
+    role: "admin",
+    createdAt: new Date(),
+  });
   console.log(`Admin: ${adminEmail} / ${adminPass}`);
 } else {
   console.log("Admin already exists");
 }
 
-const demoExists = db.prepare("SELECT id FROM users WHERE email = ?").get(demoEmail);
+const demoExists = await users().findOne({ email: demoEmail });
 if (!demoExists) {
-  db.prepare(
-    "INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, 'user')",
-  ).run(demoEmail, bcrypt.hashSync(demoPass, 10), "Демо пользователь");
+  await users().insertOne({
+    email: demoEmail,
+    passwordHash: bcrypt.hashSync(demoPass, 10),
+    name: "Демо пользователь",
+    role: "user",
+    createdAt: new Date(),
+  });
   console.log(`Demo user: ${demoEmail} / ${demoPass}`);
 }
 
-upsertTest({
+await upsertTest({
   id: entGeographyTest.id,
   title: entGeographyTest.title,
   titleKz: entGeographyTest.titleKz,
@@ -106,9 +105,9 @@ const placeholderQuestion: Question = {
 
 for (const item of catalog) {
   if (item.id === "ent-geography") continue;
-  const exists = db.prepare("SELECT id FROM tests WHERE id = ?").get(item.id);
+  const exists = await tests().findOne({ _id: item.id });
   if (exists) continue;
-  upsertTest({
+  await upsertTest({
     id: item.id,
     title: item.title,
     titleKz: item.titleKz,
@@ -125,3 +124,4 @@ for (const item of catalog) {
 }
 
 console.log("Seed complete.");
+await closeDb();

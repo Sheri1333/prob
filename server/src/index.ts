@@ -1,6 +1,6 @@
 import cors from "cors";
 import express from "express";
-import "./db.js";
+import { connectDb } from "./db.js";
 import { UPLOADS_DIR } from "./pdfParser.js";
 import { authRouter } from "./routes/auth.js";
 import { testsRouter } from "./routes/tests.js";
@@ -42,6 +42,7 @@ app.use(
   },
 );
 
+await connectDb();
 app.listen(PORT, () => {
   console.log(`PROB API http://localhost:${PORT}`);
   console.log(`Uploads ${UPLOADS_DIR}`);

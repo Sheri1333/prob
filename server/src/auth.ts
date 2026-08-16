@@ -1,14 +1,14 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { db } from "./db.js";
+import { publicUser, toObjectId, users, type UserRole } from "./db.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "prob-dev-secret-change-me";
 
 export interface AuthUser {
-  id: number;
+  id: string;
   email: string;
   name: string;
-  role: "user" | "admin";
+  role: UserRole;
 }
 
 export interface AuthedRequest extends Request {
@@ -23,11 +23,11 @@ export function signToken(user: AuthUser): string {
   );
 }
 
-export function authRequired(
+export async function authRequired(
   req: AuthedRequest,
   res: Response,
   next: NextFunction,
-): void {
+): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Требуется авторизация" });
@@ -35,26 +35,29 @@ export function authRequired(
   }
   try {
     const payload = jwt.verify(header.slice(7), JWT_SECRET) as AuthUser;
-    const row = db
-      .prepare("SELECT id, email, name, role FROM users WHERE id = ?")
-      .get(payload.id) as AuthUser | undefined;
+    const oid = toObjectId(String(payload.id));
+    if (!oid) {
+      res.status(401).json({ error: "Недействительный токен" });
+      return;
+    }
+    const row = await users().findOne({ _id: oid });
     if (!row) {
       res.status(401).json({ error: "Пользователь не найден" });
       return;
     }
-    req.user = row;
+    req.user = publicUser(row);
     next();
   } catch {
     res.status(401).json({ error: "Недействительный токен" });
   }
 }
 
-export function adminRequired(
+export async function adminRequired(
   req: AuthedRequest,
   res: Response,
   next: NextFunction,
-): void {
-  authRequired(req, res, () => {
+): Promise<void> {
+  await authRequired(req, res, () => {
     if (req.user?.role !== "admin") {
       res.status(403).json({ error: "Только для администратора" });
       return;
@@ -63,11 +66,11 @@ export function adminRequired(
   });
 }
 
-export function optionalAuth(
+export async function optionalAuth(
   req: AuthedRequest,
   _res: Response,
   next: NextFunction,
-): void {
+): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     next();
@@ -75,10 +78,13 @@ export function optionalAuth(
   }
   try {
     const payload = jwt.verify(header.slice(7), JWT_SECRET) as AuthUser;
-    const row = db
-      .prepare("SELECT id, email, name, role FROM users WHERE id = ?")
-      .get(payload.id) as AuthUser | undefined;
-    if (row) req.user = row;
+    const oid = toObjectId(String(payload.id));
+    if (!oid) {
+      next();
+      return;
+    }
+    const row = await users().findOne({ _id: oid });
+    if (row) req.user = publicUser(row);
   } catch {
     /* ignore */
   }

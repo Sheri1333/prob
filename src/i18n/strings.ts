@@ -2,9 +2,16 @@ export type Lang = "kz" | "ru";
 
 const strings = {
   section: { kz: "Бөлім", ru: "Раздел" },
-  prevQuestion: { kz: "Алдыңғы сұрақ", ru: "Предыдущий вопрос" },
-  nextQuestion: { kz: "Келесі сұрақ", ru: "Следующий вопрос" },
+  prevQuestion: { kz: "Артқа", ru: "Назад" },
+  nextQuestion: { kz: "Келесі", ru: "Далее" },
   finishTest: { kz: "Аяқтау", ru: "Завершить" },
+  exitTest: { kz: "Шығу", ru: "Выход" },
+  questionMap: { kz: "Сұрақтар картасы", ru: "Карта вопросов" },
+  zoomImage: { kz: "Үлкейту", ru: "Увеличить" },
+  confirmExit: {
+    kz: "Тесттен шығу керек пе? Жауаптар сақталмайды.",
+    ru: "Выйти из теста? Ответы не сохранятся.",
+  },
   chooseAnswer: { kz: "Жауапты таңдаңыз", ru: "Выберите ответ" },
   catalog: { kz: "", ru: "" },
   startTest: { kz: "Тестті бастау", ru: "Начать тест" },

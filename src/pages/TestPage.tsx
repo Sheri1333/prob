@@ -14,6 +14,13 @@ interface TestPageProps {
   onToggleLang: () => void;
 }
 
+function isAnswered(value: AnswerValue | undefined): boolean {
+  if (value === undefined) return false;
+  if (typeof value === "string") return value.length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  return Object.values(value).some((v) => Boolean(v));
+}
+
 export function TestPage({ lang, onToggleLang }: TestPageProps) {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
@@ -23,7 +30,8 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
   const [loadError, setLoadError] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, AnswerValue>>({});
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [startedAt] = useState(() => new Date().toISOString());
   const [finishing, setFinishing] = useState(false);
@@ -82,11 +90,23 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
     return () => window.clearInterval(timer);
   }, [test?.id]);
 
-  const answeredCount = useMemo(
-    () =>
-      test?.questions.filter((q) => answers[q.id] !== undefined).length ?? 0,
-    [answers, test],
-  );
+  const answeredIndexes = useMemo(() => {
+    const set = new Set<number>();
+    test?.questions.forEach((q, i) => {
+      if (isAnswered(answers[q.id])) set.add(i);
+    });
+    return set;
+  }, [answers, test]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setZoomSrc(null);
+      setMapOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (authLoading) {
     return <div className="page page--center">Загрузка...</div>;
@@ -127,62 +147,98 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
     }
   };
 
+  const handleExit = () => {
+    if (window.confirm(t("confirmExit", lang))) {
+      navigate("/");
+    }
+  };
+
   return (
-    <div className="test-page">
+    <div className="exam">
       <TestHeader
-        section={test.section}
+        section={test.section || test.subject}
         lang={lang}
-        onToggleLang={onToggleLang}
-        onMenuClick={() => setMenuOpen((v) => !v)}
+        current={currentIndex + 1}
+        total={test.questions.length}
         timerSeconds={secondsLeft}
-        showTimer
+        onExit={handleExit}
+        onToggleLang={onToggleLang}
       />
 
-      {menuOpen && (
-        <aside className="test-sidebar">
-          <p>
-            {t("answered", lang)}: {answeredCount} {t("of", lang)}{" "}
-            {test.questions.length}
-          </p>
-          <div className="test-sidebar__grid">
-            {test.questions.map((q, i) => (
-              <button
-                key={q.id}
-                type="button"
-                className={`test-sidebar__item ${
-                  answers[q.id] !== undefined ? "test-sidebar__item--done" : ""
-                } ${i === currentIndex ? "test-sidebar__item--active" : ""}`}
-                onClick={() => {
-                  setCurrentIndex(i);
-                  setMenuOpen(false);
-                }}
-              >
-                {q.id}
-              </button>
-            ))}
-          </div>
-        </aside>
-      )}
-
-      <QuestionView
-        question={question}
-        lang={lang}
-        answer={answers[question.id]}
-        onAnswerChange={handleAnswerChange}
-      />
+      <main className="exam-main">
+        <QuestionView
+          question={question}
+          lang={lang}
+          answer={answers[question.id]}
+          onAnswerChange={handleAnswerChange}
+          onZoom={setZoomSrc}
+        />
+      </main>
 
       <TestFooter
         lang={lang}
         currentIndex={currentIndex}
         totalQuestions={test.questions.length}
+        answeredIds={answeredIndexes}
         onPrev={() => setCurrentIndex((i) => Math.max(0, i - 1))}
         onNext={() =>
           setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))
         }
         onJump={setCurrentIndex}
+        onOpenMap={() => setMapOpen(true)}
         isLast={currentIndex === test.questions.length - 1}
         onFinish={handleFinish}
+        finishing={finishing}
       />
+
+      {mapOpen && (
+        <div
+          className="exam-map"
+          role="dialog"
+          aria-label={t("questionMap", lang)}
+          onClick={() => setMapOpen(false)}
+        >
+          <div className="exam-map__panel" onClick={(e) => e.stopPropagation()}>
+            <div className="exam-map__head">
+              <h3>{t("questionMap", lang)}</h3>
+              <button type="button" onClick={() => setMapOpen(false)}>
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <p className="exam-map__meta">
+              {t("answered", lang)}: {answeredIndexes.size} {t("of", lang)}{" "}
+              {test.questions.length}
+            </p>
+            <div className="exam-map__grid">
+              {test.questions.map((q, i) => (
+                <button
+                  key={q.id}
+                  type="button"
+                  className={`exam-map__cell ${
+                    isAnswered(answers[q.id]) ? "exam-map__cell--done" : ""
+                  } ${i === currentIndex ? "exam-map__cell--active" : ""}`}
+                  onClick={() => {
+                    setCurrentIndex(i);
+                    setMapOpen(false);
+                  }}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {zoomSrc && (
+        <button
+          type="button"
+          className="exam-lightbox"
+          onClick={() => setZoomSrc(null)}
+        >
+          <img src={zoomSrc} alt="" />
+        </button>
+      )}
     </div>
   );
 }

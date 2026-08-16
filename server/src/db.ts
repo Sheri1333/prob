@@ -1,62 +1,137 @@
-import Database from "better-sqlite3";
-import fs from "node:fs";
+import { MongoClient, ObjectId, type Collection, type Db } from "mongodb";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Question } from "./scoring.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.join(__dirname, "..", "data");
-const dbPath = path.join(dataDir, "prob.db");
 
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+function loadEnvFile(filePath: string): void {
+  if (!existsSync(filePath)) return;
+  const text = readFileSync(filePath, "utf8");
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!(key in process.env)) process.env[key] = value;
+  }
 }
 
-export const db = new Database(dbPath);
+loadEnvFile(path.join(__dirname, "..", ".env"));
+loadEnvFile(path.join(__dirname, "..", "..", ".env"));
 
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+export type UserRole = "user" | "admin";
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    password_hash TEXT NOT NULL,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
+export interface UserDoc {
+  _id: ObjectId;
+  email: string;
+  passwordHash: string;
+  name: string;
+  role: UserRole;
+  createdAt: Date;
+}
 
-  CREATE TABLE IF NOT EXISTS tests (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    title_kz TEXT NOT NULL,
-    section TEXT NOT NULL,
-    exam_type TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    duration_minutes INTEGER NOT NULL,
-    question_count INTEGER NOT NULL,
-    is_free INTEGER NOT NULL DEFAULT 1,
-    price_tenge INTEGER,
-    description TEXT NOT NULL DEFAULT '',
-    questions_json TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
+export interface TestDoc {
+  _id: string;
+  title: string;
+  titleKz: string;
+  section: string;
+  examType: string;
+  subject: string;
+  durationMinutes: number;
+  questionCount: number;
+  isFree: boolean;
+  priceTenge: number | null;
+  description: string;
+  questions: Question[];
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-  CREATE TABLE IF NOT EXISTS attempts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    test_id TEXT NOT NULL,
-    answers_json TEXT NOT NULL,
-    score INTEGER NOT NULL,
-    max_score INTEGER NOT NULL,
-    started_at TEXT NOT NULL,
-    finished_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE
-  );
+export interface AttemptDoc {
+  _id: ObjectId;
+  userId: ObjectId;
+  testId: string;
+  answers: Record<string, unknown>;
+  score: number;
+  maxScore: number;
+  startedAt: Date;
+  finishedAt: Date;
+}
 
-  CREATE INDEX IF NOT EXISTS idx_attempts_user ON attempts(user_id);
-  CREATE INDEX IF NOT EXISTS idx_attempts_test ON attempts(test_id);
-  CREATE INDEX IF NOT EXISTS idx_attempts_finished ON attempts(finished_at);
-`);
+let client: MongoClient | null = null;
+let database: Db | null = null;
+
+export function toObjectId(id: string): ObjectId | null {
+  try {
+    if (!ObjectId.isValid(id)) return null;
+    const oid = new ObjectId(id);
+    return oid.toHexString() === id ? oid : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function connectDb(): Promise<Db> {
+  if (database) return database;
+
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("MONGODB_URI не задан. Добавьте его в server/.env");
+  }
+
+  client = new MongoClient(uri);
+  await client.connect();
+  database = client.db("prob");
+
+  await database.collection<UserDoc>("users").createIndex({ email: 1 }, { unique: true });
+  await database.collection<AttemptDoc>("attempts").createIndex({ userId: 1 });
+  await database.collection<AttemptDoc>("attempts").createIndex({ testId: 1 });
+  await database.collection<AttemptDoc>("attempts").createIndex({ finishedAt: -1 });
+
+  console.log("MongoDB connected: db=prob");
+  return database;
+}
+
+function requireDb(): Db {
+  if (!database) {
+    throw new Error("MongoDB ещё не подключена. Вызовите connectDb() при старте.");
+  }
+  return database;
+}
+
+export function users(): Collection<UserDoc> {
+  return requireDb().collection<UserDoc>("users");
+}
+
+export function tests(): Collection<TestDoc> {
+  return requireDb().collection<TestDoc>("tests");
+}
+
+export function attempts(): Collection<AttemptDoc> {
+  return requireDb().collection<AttemptDoc>("attempts");
+}
+
+export function publicUser(doc: UserDoc) {
+  return {
+    id: doc._id.toHexString(),
+    email: doc.email,
+    name: doc.name,
+    role: doc.role,
+  };
+}
+
+export async function closeDb(): Promise<void> {
+  await client?.close();
+  client = null;
+  database = null;
+}

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { api, mediaUrl } from "../api/client";
+import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import type { TestDefinition } from "../types/test";
+import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
+import type { Question, TestDefinition } from "../types/test";
+import { isAnswerKeyComplete, keyedCount } from "../utils/answerKey";
 
 type Tab = "dashboard" | "tests" | "users" | "attempts" | "upload";
 
@@ -35,12 +37,6 @@ const EMPTY_JSON = `{
   ]
 }`;
 
-const TYPE_LABEL: Record<string, string> = {
-  single_choice: "Одиночный",
-  matching: "Сопоставление",
-  multiple_choice: "Множественный",
-};
-
 export function AdminPage() {
   const { user, loading, isAdmin, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("dashboard");
@@ -64,6 +60,8 @@ export function AdminPage() {
   const [parsing, setParsing] = useState(false);
   const [savingPreview, setSavingPreview] = useState(false);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  const [draftQuestions, setDraftQuestions] = useState<Question[]>([]);
+  const [onlyMissing, setOnlyMissing] = useState(false);
   const [previewMeta, setPreviewMeta] = useState({
     id: "",
     title: "",
@@ -95,6 +93,11 @@ export function AdminPage() {
   useEffect(() => {
     if (isAdmin) void load();
   }, [isAdmin, load]);
+
+  const keyProgress = useMemo(
+    () => keyedCount(draftQuestions),
+    [draftQuestions],
+  );
 
   if (loading) {
     return <div className="page page--center">Загрузка...</div>;
@@ -155,6 +158,8 @@ export function AdminPage() {
     try {
       const result = await api.adminParsePdf(file);
       setParseResult(result);
+      setDraftQuestions(result.draft.questions);
+      setOnlyMissing(false);
       const d = result.draft;
       setPreviewMeta({
         id: d.id,
@@ -182,8 +187,7 @@ export function AdminPage() {
       setMessage(
         `PDF разобран: ${result.parse.questions.length} вопросов (${result.filename})`,
       );
-    } catch (err) {
-      setParseResult(null);
+      } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка разбора PDF");
     } finally {
       setParsing(false);
@@ -191,13 +195,22 @@ export function AdminPage() {
   }
 
   async function handleSavePreview() {
-    if (!parseResult) return;
+    if (!draftQuestions.length) return;
     setSavingPreview(true);
     setError("");
     setMessage("");
     try {
+      const missing = draftQuestions
+        .filter((q) => !isAnswerKeyComplete(q))
+        .map((q) => q.id);
+      if (missing.length > 0) {
+        setOpenPreviewId(missing[0]);
+        setOnlyMissing(true);
+        throw new Error(
+          `Сначала отметьте правильные ответы у вопросов: ${missing.join(", ")}`,
+        );
+      }
       const payload: TestDefinition & { description?: string } = {
-        ...parseResult.draft,
         id: previewMeta.id.trim(),
         title: previewMeta.title.trim(),
         titleKz: previewMeta.titleKz.trim(),
@@ -210,13 +223,13 @@ export function AdminPage() {
           ? Number(previewMeta.priceTenge)
           : undefined,
         description: previewMeta.description,
-        questionCount: parseResult.draft.questions.length,
-        questions: parseResult.draft.questions,
+        questionCount: draftQuestions.length,
+        questions: draftQuestions,
       };
       if (!payload.id) throw new Error("Укажите ID теста");
       await api.adminSaveTest(payload);
       setMessage(
-        `Тест «${payload.id}» сохранён (${payload.questions.length} вопросов). Правильные ответы заполните позже в JSON.`,
+        `Тест «${payload.id}» сохранён (${payload.questions.length} вопросов, все ключи заполнены).`,
       );
       setTests((await api.adminTests()).tests);
     } catch (err) {
@@ -242,8 +255,23 @@ export function AdminPage() {
       const { test } = await api.adminGetTest(id);
       setJsonText(JSON.stringify(test, null, 2));
       setParseResult(null);
+      setDraftQuestions(test.questions);
+      setOnlyMissing(false);
+      setPreviewMeta({
+        id: test.id,
+        title: test.title,
+        titleKz: test.titleKz,
+        section: test.section,
+        subject: test.subject,
+        examType: test.examType,
+        durationMinutes: test.durationMinutes,
+        isFree: test.isFree,
+        priceTenge: test.priceTenge != null ? String(test.priceTenge) : "",
+        description: "",
+      });
+      setOpenPreviewId(test.questions[0]?.id ?? null);
       setTab("upload");
-      setMessage(`Загружен в редактор: ${id}`);
+      setMessage(`Редактор ключей: ${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     }
@@ -415,9 +443,9 @@ export function AdminPage() {
             <div className="admin-pdf-zone">
               <h2>1. PDF из НЦТ / пробника</h2>
               <p className="admin-hint">
-                Загрузите PDF с вопросами (текстовый, не скан). Сервер
-                распарсит и покажет предпросмотр — сохранение только после
-                вашей проверки.
+                Парсер только вытаскивает вопросы, варианты и картинки. Правильные
+                ответы система не угадывает — вы отмечаете их сами в шаге 2,
+                затем сохраняете тест.
               </p>
               <label className="admin-upload__btn admin-upload__btn--pdf">
                 {parsing ? "Разбор PDF..." : "Выбрать PDF"}
@@ -434,66 +462,81 @@ export function AdminPage() {
               </label>
             </div>
 
-            {parseResult && (
+            {draftQuestions.length > 0 && (
               <div className="admin-preview">
-                <h2>2. Предпросмотр</h2>
-                <div className="admin-preview__stats">
-                  <span>
-                    Файл: <strong>{parseResult.filename}</strong>
-                  </span>
-                  <span>
-                    Страниц: <strong>{parseResult.parse.pages}</strong>
-                  </span>
-                  <span>
-                    Вопросов:{" "}
-                    <strong>{parseResult.parse.questions.length}</strong>
-                  </span>
-                  <span>
-                    Одиночных:{" "}
-                    <strong>{parseResult.parse.byType.single_choice}</strong>
-                  </span>
-                  <span>
-                    Сопоставление:{" "}
-                    <strong>{parseResult.parse.byType.matching}</strong>
-                  </span>
-                  <span>
-                    Множественных:{" "}
-                    <strong>{parseResult.parse.byType.multiple_choice}</strong>
-                  </span>
-                  <span>
-                    Картинок привязано:{" "}
-                    <strong>{parseResult.parse.imagesAttached ?? 0}</strong>
-                  </span>
-                  <span>
-                    С пометкой «сурет/карта»:{" "}
-                    <strong>{parseResult.parse.withImages}</strong>
-                  </span>
-                </div>
-
-                <div className="admin-preview__pipeline">
-                  {parseResult.parse.steps.map((s) => (
-                    <div key={s.step} className="admin-preview__step">
-                      <strong>
-                        {s.step}. {s.name}
-                      </strong>
-                      <span>{s.detail}</span>
+                <h2>2. Ключи ответов</h2>
+                {parseResult && (
+                  <>
+                    <div className="admin-preview__stats">
+                      <span>
+                        Файл: <strong>{parseResult.filename}</strong>
+                      </span>
+                      <span>
+                        Страниц: <strong>{parseResult.parse.pages}</strong>
+                      </span>
+                      <span>
+                        Вопросов:{" "}
+                        <strong>{parseResult.parse.questions.length}</strong>
+                      </span>
+                      <span>
+                        Одиночных:{" "}
+                        <strong>{parseResult.parse.byType.single_choice}</strong>
+                      </span>
+                      <span>
+                        Сопоставление:{" "}
+                        <strong>{parseResult.parse.byType.matching}</strong>
+                      </span>
+                      <span>
+                        Множественных:{" "}
+                        <strong>
+                          {parseResult.parse.byType.multiple_choice}
+                        </strong>
+                      </span>
+                      <span>
+                        Картинок:{" "}
+                        <strong>{parseResult.parse.imagesAttached ?? 0}</strong>
+                      </span>
                     </div>
-                  ))}
-                </div>
+                    <div className="admin-preview__pipeline">
+                      {parseResult.parse.steps.map((s) => (
+                        <div key={s.step} className="admin-preview__step">
+                          <strong>
+                            {s.step}. {s.name}
+                          </strong>
+                          <span>{s.detail}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
 
-                {(parseResult.parse.imagesAttached ?? 0) === 0 &&
-                  parseResult.parse.withImages > 0 && (
-                  <p className="admin-alert admin-alert--error">
-                    Вопросы ссылаются на картинки, но извлечь изображения из
-                    PDF не удалось.
-                  </p>
-                )}
-                {(parseResult.parse.imagesAttached ?? 0) > 0 && (
-                  <p className="admin-alert admin-alert--ok">
-                    Картинки извлечены из PDF и привязаны к вопросам. После
-                    сохранения они будут доступны в тесте.
-                  </p>
-                )}
+                <div className="admin-key-progress">
+                  <div>
+                    Отмечено ключей:{" "}
+                    <strong>
+                      {keyProgress} / {draftQuestions.length}
+                    </strong>
+                  </div>
+                  <div className="admin-key-progress__bar">
+                    <div
+                      style={{
+                        width: `${
+                          draftQuestions.length
+                            ? (100 * keyProgress) / draftQuestions.length
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                  <label className="admin-key-progress__filter">
+                    <input
+                      type="checkbox"
+                      checked={onlyMissing}
+                      onChange={(e) => setOnlyMissing(e.target.checked)}
+                    />
+                    Только без ключа
+                  </label>
+                </div>
 
                 <div className="admin-meta-form">
                   <label>
@@ -608,85 +651,26 @@ export function AdminPage() {
                   </label>
                 </div>
 
-                <div className="admin-preview__questions">
-                  <h3>Вопросы</h3>
-                  {parseResult.parse.questions.map((q) => {
-                    const open = openPreviewId === q.id;
-                    return (
-                      <article
-                        key={q.id}
-                        className={`admin-q ${open ? "admin-q--open" : ""}`}
-                      >
-                        <button
-                          type="button"
-                          className="admin-q__head"
-                          onClick={() =>
-                            setOpenPreviewId(open ? null : q.id)
-                          }
-                        >
-                          <span className="admin-q__num">№{q.id}</span>
-                          <span className="admin-q__type">
-                            {TYPE_LABEL[q.type] ?? q.type}
-                          </span>
-                          {(q.images?.length ?? 0) > 0 ? (
-                            <span className="admin-q__img">
-                              {q.images!.length} фото
-                            </span>
-                          ) : q.hasImageHint ? (
-                            <span className="admin-q__img admin-q__img--miss">
-                              нет фото
-                            </span>
-                          ) : null}
-                          <span className="admin-q__text">{q.text}</span>
-                        </button>
-                        {open && (
-                          <div className="admin-q__body">
-                            {q.images && q.images.length > 0 && (
-                              <div className="admin-q__photos">
-                                {q.images.map((src, i) => (
-                                  <img
-                                    key={i}
-                                    src={mediaUrl(src)}
-                                    alt={`Вопрос ${q.id} рис. ${i + 1}`}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                            {q.rows && q.rows.length > 0 && (
-                              <div className="admin-q__rows">
-                                <strong>Строки:</strong>
-                                <ul>
-                                  {q.rows.map((r) => (
-                                    <li key={r.id}>
-                                      {r.id}) {r.label}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            <ul className="admin-q__opts">
-                              {q.options.map((o) => (
-                                <li key={o.id}>
-                                  <strong>{o.id})</strong> {o.label}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
-                </div>
+                <h3>Вопросы — отметьте правильные ответы</h3>
+                <AnswerKeyEditor
+                  questions={draftQuestions}
+                  onChange={setDraftQuestions}
+                  openId={openPreviewId}
+                  onOpen={setOpenPreviewId}
+                  onlyMissing={onlyMissing}
+                />
 
                 <button
                   type="button"
                   className="auth-card__btn"
-                  disabled={savingPreview}
+                  disabled={savingPreview || keyProgress < draftQuestions.length}
                   onClick={() => void handleSavePreview()}
                 >
                   {savingPreview
                     ? "Сохранение..."
-                    : `Сохранить тест (${parseResult.parse.questions.length} вопросов)`}
+                    : keyProgress < draftQuestions.length
+                      ? `Отметьте ключи (${keyProgress}/${draftQuestions.length})`
+                      : `Сохранить тест (${draftQuestions.length} вопросов)`}
                 </button>
               </div>
             )}
@@ -695,7 +679,8 @@ export function AdminPage() {
 
             <h2>JSON вручную</h2>
             <p className="admin-hint">
-              Альтернатива: загрузите готовый JSON или правьте текст ниже.
+              Для готового файла с уже проставленными ключами. Без правильных
+              ответов сервер тест не сохранит.
             </p>
             <div className="admin-upload">
               <label className="admin-upload__btn">
