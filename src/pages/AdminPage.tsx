@@ -88,8 +88,10 @@ export function AdminPage() {
   if (!isAdmin) {
     return (
       <div className="page page--center">
-        <p>Доступ только для администратора</p>
-        <Link to="/">На главную</Link>
+        <p>Вход в админку только по логину администратора</p>
+        <Link to="/login" state={{ from: "/admin" }}>
+          Войти
+        </Link>
       </div>
     );
   }
@@ -257,12 +259,12 @@ export function AdminPage() {
 
   return (
     <div className="admin-page">
-      <header className="admin-header">
-        <div className="admin-header__brand">
+      <aside className="admin-sidebar">
+        <Link to="/" className="admin-sidebar__brand">
           <strong>PROB</strong>
           <span>Админка</span>
-        </div>
-        <nav className="admin-nav">
+        </Link>
+        <nav className="admin-sidebar__nav">
           {(
             [
               ["dashboard", "Обзор"],
@@ -282,14 +284,16 @@ export function AdminPage() {
             </button>
           ))}
         </nav>
-        <div className="admin-header__actions">
-          <span className="admin-header__user">{user.email}</span>
-          <Link to="/">Сайт</Link>
-          <button type="button" onClick={logout}>
-            Выйти
-          </button>
+        <div className="admin-sidebar__foot">
+          {user && <span className="admin-sidebar__user">{user.email}</span>}
+          <Link to="/">На сайт</Link>
+          {user && (
+            <button type="button" onClick={logout}>
+              Выйти
+            </button>
+          )}
         </div>
-      </header>
+      </aside>
 
       <main className="admin-main">
         {error && <p className="admin-alert admin-alert--error">{error}</p>}
@@ -403,7 +407,7 @@ export function AdminPage() {
                       <th>Предмет</th>
                       <th>Вопросов</th>
                       <th>Доступ</th>
-                      <th></th>
+                      <th>Действия</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -417,20 +421,22 @@ export function AdminPage() {
                         <td>{t.subject}</td>
                         <td>{t.questionCount}</td>
                         <td>{t.isFree ? "бесплатно" : `${t.priceTenge} ₸`}</td>
-                        <td className="admin-table__actions">
-                          <button
-                            type="button"
-                            onClick={() => void loadTestForEdit(t.id)}
-                          >
-                            Править
-                          </button>
-                          <button
-                            type="button"
-                            className="danger"
-                            onClick={() => void handleDelete(t.id)}
-                          >
-                            Удалить
-                          </button>
+                        <td>
+                          <div className="admin-table__actions">
+                            <button
+                              type="button"
+                              onClick={() => void loadTestForEdit(t.id)}
+                            >
+                              Редактировать
+                            </button>
+                            <button
+                              type="button"
+                              className="danger"
+                              onClick={() => void handleDelete(t.id)}
+                            >
+                              Удалить
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

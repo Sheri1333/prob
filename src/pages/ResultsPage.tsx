@@ -158,9 +158,6 @@ export function ResultsPage({ lang }: ResultsPageProps) {
         <Link to="/" className="results-page__back">
           {t("backToCatalog", lang)}
         </Link>
-        <Link to="/profile" className="results-page__back results-page__back--secondary">
-          Профиль
-        </Link>
       </div>
       {testId && <p className="results-meta">Тест: {testId}</p>}
     </div>

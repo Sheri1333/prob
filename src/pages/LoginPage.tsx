@@ -6,7 +6,7 @@ export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from || "/";
+  const from = (location.state as { from?: string } | null)?.from || "/admin";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,10 +30,7 @@ export function LoginPage() {
   return (
     <div className="page page--center auth-page">
       <form className="auth-card" onSubmit={onSubmit}>
-        <h1>Вход</h1>
-        <p className="auth-card__hint">
-          Админ: <code>admin@prob.kz</code> / <code>admin123</code>
-        </p>
+        <h1>Вход в админку</h1>
         {error && <p className="auth-card__error">{error}</p>}
         <label>
           Email
@@ -58,9 +55,6 @@ export function LoginPage() {
         <button type="submit" className="auth-card__btn" disabled={busy}>
           {busy ? "..." : "Войти"}
         </button>
-        <p className="auth-card__footer">
-          Нет аккаунта? <Link to="/register">Регистрация</Link>
-        </p>
         <Link to="/" className="auth-card__back">
           ← На главную
         </Link>

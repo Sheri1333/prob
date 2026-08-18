@@ -31,32 +31,20 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       <header className="site-header">
         <div className="site-header__logo">PROB</div>
         <nav className="site-header__nav">
-          <span>{t("catalog", lang)}</span>
-          {user ? (
+          <Link to="/admin">Админка</Link>
+          {isAdmin && user && (
             <>
               <span className="site-header__user">{user.name}</span>
-              {isAdmin && <Link to="/admin">Админка</Link>}
-              <Link to="/profile">Профиль</Link>
               <button type="button" className="link-btn" onClick={logout}>
                 Выйти
               </button>
-            </>
-          ) : (
-            <>
-              <Link to="/login">Вход</Link>
-              <Link to="/register">Регистрация</Link>
             </>
           )}
         </nav>
       </header>
 
-      <section className="hero">
-        <h1>{t("heroTitle", lang)}</h1>
-        <p>{t("heroSubtitle", lang)}</p>
-      </section>
-
       <section className="catalog">
-        <h2>{t("catalog", lang)}</h2>
+        <h2>{lang === "kz" ? "Тесттер" : "Тесты"}</h2>
         {loading && <p>Загрузка...</p>}
         {error && (
           <p className="auth-card__error">
@@ -77,15 +65,9 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 {item.isFree ? t("free", lang) : `${item.priceTenge} ₸`}
               </p>
               <p className="test-card__desc">{item.description}</p>
-              {item.isFree || user ? (
-                <Link to={`/test/${item.id}`} className="test-card__cta">
-                  {user ? t("startTest", lang) : "Войти и начать"}
-                </Link>
-              ) : (
-                <Link to="/login" className="test-card__cta">
-                  {item.priceTenge} ₸ — войти
-                </Link>
-              )}
+              <Link to={`/test/${item.id}`} className="test-card__cta">
+                {t("startTest", lang)}
+              </Link>
             </article>
           ))}
         </div>

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { attempts, tests } from "../db.js";
-import { authRequired, type AuthedRequest } from "../auth.js";
+import { authRequired, optionalAuth, type AuthedRequest } from "../auth.js";
 import {
   scoreTest,
   type AnswerValue,
@@ -9,7 +9,7 @@ import { ObjectId } from "mongodb";
 
 export const attemptsRouter = Router();
 
-attemptsRouter.post("/", authRequired, async (req: AuthedRequest, res) => {
+attemptsRouter.post("/", optionalAuth, async (req: AuthedRequest, res) => {
   const { testId, answers, startedAt } = req.body as {
     testId?: string;
     answers?: Record<string, AnswerValue>;
@@ -32,7 +32,7 @@ attemptsRouter.post("/", authRequired, async (req: AuthedRequest, res) => {
   const started = startedAt ? new Date(startedAt) : finishedAt;
 
   const insert = await attempts().insertOne({
-    userId: new ObjectId(req.user!.id),
+    userId: req.user ? new ObjectId(req.user.id) : null,
     testId,
     answers,
     score,

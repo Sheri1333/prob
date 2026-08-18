@@ -61,7 +61,7 @@ export interface TestDoc {
 
 export interface AttemptDoc {
   _id: ObjectId;
-  userId: ObjectId;
+  userId: ObjectId | null;
   testId: string;
   answers: Record<string, unknown>;
   score: number;

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import { useAuth } from "../auth/AuthContext";
 import { QuestionView } from "../components/QuestionView";
 import { TestFooter } from "../components/TestFooter";
 import { TestHeader } from "../components/TestHeader";
@@ -24,7 +23,6 @@ function isAnswered(value: AnswerValue | undefined): boolean {
 export function TestPage({ lang, onToggleLang }: TestPageProps) {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
 
   const [test, setTest] = useState<TestDefinition | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -107,20 +105,6 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  if (authLoading) {
-    return <div className="page page--center">Загрузка...</div>;
-  }
-
-  if (!user) {
-    return (
-      <Navigate
-        to="/login"
-        replace
-        state={{ from: `/test/${testId ?? ""}` }}
-      />
-    );
-  }
 
   if (loadError) {
     return (

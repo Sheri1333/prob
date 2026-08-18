@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { tests } from "../db.js";
-import { optionalAuth, type AuthedRequest } from "../auth.js";
 import { stripAnswers } from "../scoring.js";
 
 export const testsRouter = Router();
@@ -38,18 +37,17 @@ testsRouter.get("/", async (_req, res) => {
   res.json({ tests: rows.map(toCatalogItem) });
 });
 
-testsRouter.get("/:id", optionalAuth, async (req: AuthedRequest, res) => {
+testsRouter.get("/:id", async (req, res) => {
   const row = await tests().findOne({ _id: req.params.id });
   if (!row) {
     res.status(404).json({ error: "Тест не найден" });
     return;
   }
 
-  const isAdmin = req.user?.role === "admin";
   res.json({
     test: {
       ...toCatalogItem(row),
-      questions: isAdmin ? row.questions : stripAnswers(row.questions),
+      questions: stripAnswers(row.questions),
     },
   });
 });

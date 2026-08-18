@@ -81,7 +81,9 @@ adminRouter.get("/stats", async (_req, res) => {
         .toArray(),
     ]);
 
-  const userIds = topAttempts.map((a) => a.userId as ObjectId);
+  const userIds = topAttempts
+    .map((a) => a.userId)
+    .filter((id): id is ObjectId => id instanceof ObjectId);
   const testIds = topAttempts.map((a) => a.testId as string);
   const [userDocs, testDocs] = await Promise.all([
     userIds.length
@@ -109,15 +111,16 @@ adminRouter.get("/stats", async (_req, res) => {
       role: u.role,
       created_at: u.createdAt.toISOString(),
     })),
-    topAttempts: topAttempts.map((a) => {
-      const u = userMap.get((a.userId as ObjectId).toHexString());
+    topAttempts:     topAttempts.map((a) => {
+      const uid = a.userId instanceof ObjectId ? a.userId.toHexString() : "";
+      const u = uid ? userMap.get(uid) : undefined;
       const t = testMap.get(a.testId as string);
       return {
         id: (a._id as ObjectId).toHexString(),
         score: a.score,
         max_score: a.maxScore,
         finished_at: (a.finishedAt as Date).toISOString(),
-        user_name: u?.name ?? "",
+        user_name: u?.name ?? "Гость",
         user_email: u?.email ?? "",
         test_title: t?.title ?? a.testId,
       };
@@ -196,9 +199,14 @@ adminRouter.get("/attempts", async (req, res) => {
     .limit(200)
     .toArray();
 
-  const userIds = [...new Set(rows.map((r) => r.userId.toHexString()))].map(
-    (id) => new ObjectId(id),
-  );
+  const userIds = [
+    ...new Set(
+      rows
+        .map((r) => r.userId)
+        .filter((id): id is ObjectId => id instanceof ObjectId)
+        .map((id) => id.toHexString()),
+    ),
+  ].map((id) => new ObjectId(id));
   const testIds = [...new Set(rows.map((r) => r.testId))];
   const [userDocs, testDocs] = await Promise.all([
     userIds.length ? users().find({ _id: { $in: userIds } }).toArray() : [],
@@ -209,18 +217,18 @@ adminRouter.get("/attempts", async (req, res) => {
 
   res.json({
     attempts: rows.map((row) => {
-      const u = userMap.get(row.userId.toHexString());
+      const u = row.userId ? userMap.get(row.userId.toHexString()) : undefined;
       const t = testMap.get(row.testId);
       return {
         id: row._id.toHexString(),
-        userId: row.userId.toHexString(),
+        userId: row.userId?.toHexString() ?? "",
         testId: row.testId,
         score: row.score,
         maxScore: row.maxScore,
         startedAt: row.startedAt.toISOString(),
         finishedAt: row.finishedAt.toISOString(),
-        userName: u?.name ?? "",
-        userEmail: u?.email ?? "",
+        userName: u?.name ?? "Гость",
+        userEmail: u?.email ?? "—",
         testTitle: t?.title ?? row.testId,
         subject: t?.subject ?? "",
       };
