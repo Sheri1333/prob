@@ -54,6 +54,7 @@ export interface TestDoc {
   isFree: boolean;
   priceTenge: number | null;
   description: string;
+  coverImage: string;
   questions: Question[];
   createdAt: Date;
   updatedAt: Date;
@@ -139,6 +140,10 @@ function requireDb(): Db {
     throw new Error("MongoDB ещё не подключена. Вызовите connectDb() при старте.");
   }
   return database;
+}
+
+export function getDb(): Db {
+  return requireDb();
 }
 
 export function users(): Collection<UserDoc> {

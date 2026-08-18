@@ -37,15 +37,17 @@ export function TestFooter({
 
   return (
     <nav className="exam-footer">
-      <button
-        type="button"
-        className="exam-footer__ghost"
-        onClick={onPrev}
-        disabled={currentIndex === 0 || finishing}
-      >
-        <span className="material-symbols-outlined">chevron_left</span>
-        {t("prevQuestion", lang)}
-      </button>
+      <div className="exam-footer__left">
+        <button
+          type="button"
+          className="exam-footer__ghost"
+          onClick={onPrev}
+          disabled={currentIndex === 0 || finishing}
+        >
+          <span className="material-symbols-outlined">chevron_left</span>
+          {t("prevQuestion", lang)}
+        </button>
+      </div>
 
       <div className="exam-footer__dots">
         {start > 0 && <span className="exam-footer__ellipsis">...</span>}

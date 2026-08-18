@@ -7,6 +7,11 @@ import { TestHeader } from "../components/TestHeader";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import type { AnswerValue, TestDefinition } from "../types/test";
+import {
+  clearTestDraft,
+  loadTestDraft,
+  saveTestDraft,
+} from "../utils/testDraft";
 
 interface TestPageProps {
   lang: Lang;
@@ -31,24 +36,75 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
   const [mapOpen, setMapOpen] = useState(false);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
-  const [startedAt] = useState(() => new Date().toISOString());
+  const [startedAt, setStartedAt] = useState(() => new Date().toISOString());
   const [finishing, setFinishing] = useState(false);
+  const [ready, setReady] = useState(false);
+  const endsAtRef = useRef(0);
+  const finishingRef = useRef(false);
 
   useEffect(() => {
     if (!testId) return;
+    setReady(false);
+    setTest(null);
+    setLoadError("");
+    finishingRef.current = false;
+    setFinishing(false);
     api
       .getTest(testId)
       .then(({ test: loaded }) => {
+        const draft = loadTestDraft(loaded.id);
         setTest(loaded);
-        setSecondsLeft(loaded.durationMinutes * 60);
+        if (draft) {
+          setAnswers(draft.answers);
+          setCurrentIndex(
+            Math.min(
+              Math.max(0, draft.currentIndex),
+              Math.max(0, loaded.questions.length - 1),
+            ),
+          );
+          setStartedAt(draft.startedAt);
+          endsAtRef.current = draft.endsAt;
+          setSecondsLeft(
+            Math.max(0, Math.ceil((draft.endsAt - Date.now()) / 1000)),
+          );
+        } else {
+          const duration = loaded.durationMinutes * 60;
+          const nowIso = new Date().toISOString();
+          const endsAt = Date.now() + duration * 1000;
+          endsAtRef.current = endsAt;
+          setAnswers({});
+          setCurrentIndex(0);
+          setStartedAt(nowIso);
+          setSecondsLeft(duration);
+          saveTestDraft({
+            testId: loaded.id,
+            answers: {},
+            currentIndex: 0,
+            startedAt: nowIso,
+            endsAt,
+          });
+        }
+        setReady(true);
       })
       .catch((e) =>
         setLoadError(e instanceof Error ? e.message : "Тест не найден"),
       );
   }, [testId]);
 
+  useEffect(() => {
+    if (!test || !ready || finishing || !endsAtRef.current) return;
+    saveTestDraft({
+      testId: test.id,
+      answers,
+      currentIndex,
+      startedAt,
+      endsAt: endsAtRef.current,
+    });
+  }, [answers, currentIndex, finishing, ready, startedAt, test]);
+
   const finishTest = useCallback(async () => {
-    if (!test || finishing) return;
+    if (!test || finishingRef.current) return;
+    finishingRef.current = true;
     setFinishing(true);
     try {
       const result = await api.submitAttempt({
@@ -56,6 +112,7 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
         answers,
         startedAt,
       });
+      clearTestDraft(test.id);
       navigate(`/test/${test.id}/results`, {
         state: {
           answers,
@@ -65,28 +122,35 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
         },
       });
     } catch (e) {
+      finishingRef.current = false;
       setFinishing(false);
       window.alert(e instanceof Error ? e.message : "Не удалось сохранить результат");
     }
-  }, [answers, finishing, navigate, startedAt, test]);
+  }, [answers, navigate, startedAt, test]);
 
   const finishRef = useRef(finishTest);
   finishRef.current = finishTest;
 
   useEffect(() => {
-    if (!test) return;
+    if (!test || !ready) return;
+    const tick = () => {
+      const left = Math.max(
+        0,
+        Math.ceil((endsAtRef.current - Date.now()) / 1000),
+      );
+      setSecondsLeft(left);
+      if (left <= 0) {
+        void finishRef.current();
+        return false;
+      }
+      return true;
+    };
+    if (!tick()) return;
     const timer = window.setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          window.clearInterval(timer);
-          void finishRef.current();
-          return 0;
-        }
-        return prev - 1;
-      });
+      if (!tick()) window.clearInterval(timer);
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [test?.id]);
+  }, [ready, test?.id]);
 
   const answeredIndexes = useMemo(() => {
     const set = new Set<number>();
@@ -121,8 +185,35 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
 
   const question = test.questions[currentIndex];
 
+  const persist = (
+    nextAnswers: Record<number, AnswerValue>,
+    nextIndex: number,
+  ) => {
+    if (finishingRef.current || !endsAtRef.current) return;
+    saveTestDraft({
+      testId: test.id,
+      answers: nextAnswers,
+      currentIndex: nextIndex,
+      startedAt,
+      endsAt: endsAtRef.current,
+    });
+  };
+
   const handleAnswerChange = (value: AnswerValue) => {
-    setAnswers((prev) => ({ ...prev, [question.id]: value }));
+    setAnswers((prev) => {
+      const next = { ...prev, [question.id]: value };
+      persist(next, currentIndex);
+      return next;
+    });
+  };
+
+  const goTo = (index: number) => {
+    const nextIndex = Math.min(
+      test.questions.length - 1,
+      Math.max(0, index),
+    );
+    setCurrentIndex(nextIndex);
+    persist(answers, nextIndex);
   };
 
   const handleFinish = () => {
@@ -164,11 +255,9 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
         currentIndex={currentIndex}
         totalQuestions={test.questions.length}
         answeredIds={answeredIndexes}
-        onPrev={() => setCurrentIndex((i) => Math.max(0, i - 1))}
-        onNext={() =>
-          setCurrentIndex((i) => Math.min(test.questions.length - 1, i + 1))
-        }
-        onJump={setCurrentIndex}
+        onPrev={() => goTo(currentIndex - 1)}
+        onNext={() => goTo(currentIndex + 1)}
+        onJump={goTo}
         onOpenMap={() => setMapOpen(true)}
         isLast={currentIndex === test.questions.length - 1}
         onFinish={handleFinish}
@@ -217,7 +306,7 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
                     isAnswered(answers[q.id]) ? "exam-map__cell--done" : ""
                   } ${i === currentIndex ? "exam-map__cell--active" : ""}`}
                   onClick={() => {
-                    setCurrentIndex(i);
+                    goTo(i);
                     setMapOpen(false);
                   }}
                 >

@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { api } from "../api/client";
+import { api, mediaUrl } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
@@ -54,7 +54,14 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         <div className="catalog-grid">
           {tests.map((item) => (
             <article key={item.id} className="test-card">
-              <div className="test-card__badge">{item.examType}</div>
+              {item.coverImage && (
+                <img
+                  className="test-card__cover"
+                  src={mediaUrl(item.coverImage)}
+                  alt=""
+                />
+              )}
+              <div className="test-card__badge">ЕНТ</div>
               <h3>{lang === "kz" ? item.titleKz : item.title}</h3>
               <p className="test-card__subject">{item.subject}</p>
               <p className="test-card__meta">

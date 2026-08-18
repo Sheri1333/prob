@@ -223,6 +223,7 @@ export const api = {
         isFree: boolean;
         priceTenge: number | null;
         description: string;
+        coverImage?: string;
         createdAt: string;
         updatedAt: string;
       }>;
@@ -235,11 +236,18 @@ export const api = {
     );
   },
 
-  adminSaveTest(test: TestDefinition & { description?: string }) {
+  adminSaveTest(test: TestDefinition & { description?: string; coverImage?: string }) {
     return request<{ ok: boolean; id: string }>("/admin/tests", {
       method: "POST",
       body: JSON.stringify(test),
     });
+  },
+
+  adminDuplicateTest(id: string) {
+    return request<{ ok: boolean; id: string }>(
+      "/admin/tests/" + encodeURIComponent(id) + "/duplicate",
+      { method: "POST" },
+    );
   },
 
   adminDeleteTest(id: string) {
@@ -247,6 +255,16 @@ export const api = {
       "/admin/tests/" + encodeURIComponent(id),
       { method: "DELETE" },
     );
+  },
+
+  adminUploadImage(file: File, kind: "cover" | "question" = "question") {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("kind", kind);
+    return request<{ id: string; url: string }>("/admin/files", {
+      method: "POST",
+      body: form,
+    });
   },
 
   adminUploadTest(file: File) {

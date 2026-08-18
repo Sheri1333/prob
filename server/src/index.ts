@@ -7,6 +7,7 @@ import { authRouter } from "./routes/auth.js";
 import { testsRouter } from "./routes/tests.js";
 import { attemptsRouter } from "./routes/attempts.js";
 import { adminRouter } from "./routes/admin.js";
+import { filesRouter } from "./routes/files.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 
@@ -69,6 +70,7 @@ app.use((req, res, next) => {
 app.use("/api/auth", authRouter);
 app.use("/api/tests", testsRouter);
 app.use("/api/attempts", attemptsRouter);
+app.use("/api/files", filesRouter);
 app.use("/api/admin", adminRouter);
 
 app.use(

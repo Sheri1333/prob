@@ -8,8 +8,8 @@ import {
   parsePdfBuffer,
   slugFromFilename,
   toTestQuestions,
-  materializeQuestionImages,
 } from "../pdfParser.js";
+import { persistCoverImage, persistQuestionImages, storeImage } from "../gridfs.js";
 
 export const adminRouter = Router();
 const upload = multer({
@@ -17,7 +17,30 @@ const upload = multer({
   limits: { fileSize: 15_000_000 },
 });
 
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8_000_000 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|webp|gif)$/i.test(file.mimetype)) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error("Нужно изображение JPEG, PNG, WebP или GIF"));
+  },
+});
+
 adminRouter.use(adminRequired);
+
+async function uniqueCopyId(sourceId: string): Promise<string> {
+  const base = sourceId.replace(/-copy(?:-\d+)?$/, "");
+  let id = `${base}-copy`;
+  let n = 2;
+  while (await tests().findOne({ _id: id })) {
+    id = `${base}-copy-${n}`;
+    n += 1;
+  }
+  return id;
+}
 
 async function upsertTest(payload: ReturnType<typeof validateTestPayload>) {
   const now = new Date();
@@ -29,13 +52,14 @@ async function upsertTest(payload: ReturnType<typeof validateTestPayload>) {
         title: payload.title,
         titleKz: payload.titleKz,
         section: payload.section,
-        examType: payload.examType,
+        examType: "ENT",
         subject: payload.subject,
         durationMinutes: payload.durationMinutes,
         questionCount: payload.questions.length,
         isFree: payload.isFree !== false,
         priceTenge: payload.priceTenge ?? null,
         description: payload.description ?? "",
+        coverImage: payload.coverImage ?? "",
         questions: payload.questions,
         updatedAt: now,
       },
@@ -248,9 +272,10 @@ adminRouter.get("/tests", async (_req, res) => {
       subject: row.subject,
       durationMinutes: row.durationMinutes,
       questionCount: row.questionCount,
-      isFree: row.isFree,
+      isFree: row.isFree !== false,
       priceTenge: row.priceTenge,
       description: row.description,
+      coverImage: row.coverImage ?? "",
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     })),
@@ -274,9 +299,10 @@ adminRouter.get("/tests/:id", async (req, res) => {
       subject: row.subject,
       durationMinutes: row.durationMinutes,
       questionCount: row.questionCount,
-      isFree: row.isFree,
+      isFree: row.isFree !== false,
       priceTenge: row.priceTenge,
       description: row.description,
+      coverImage: row.coverImage ?? "",
       questions: row.questions as Question[],
     },
   });
@@ -285,7 +311,8 @@ adminRouter.get("/tests/:id", async (req, res) => {
 adminRouter.post("/tests", async (req: AuthedRequest, res) => {
   try {
     const payload = validateTestPayload(req.body);
-    payload.questions = materializeQuestionImages(payload.id, payload.questions);
+    payload.coverImage = await persistCoverImage(payload.coverImage);
+    payload.questions = await persistQuestionImages(payload.questions);
     await upsertTest(payload);
     res.status(201).json({ ok: true, id: payload.id });
   } catch (e) {
@@ -301,7 +328,8 @@ adminRouter.put("/tests/:id", async (req: AuthedRequest, res) => {
       res.status(404).json({ error: "Тест не найден" });
       return;
     }
-    payload.questions = materializeQuestionImages(payload.id, payload.questions);
+    payload.coverImage = await persistCoverImage(payload.coverImage);
+    payload.questions = await persistQuestionImages(payload.questions);
     await upsertTest(payload);
     res.json({ ok: true, id: payload.id });
   } catch (e) {
@@ -319,6 +347,68 @@ adminRouter.delete("/tests/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+adminRouter.post("/tests/:id/duplicate", async (req, res) => {
+  const row = await tests().findOne({ _id: req.params.id });
+  if (!row) {
+    res.status(404).json({ error: "Тест не найден" });
+    return;
+  }
+  const newId = await uniqueCopyId(row._id);
+  const now = new Date();
+  const questions = JSON.parse(JSON.stringify(row.questions)) as Question[];
+  await tests().insertOne({
+    _id: newId,
+    title: /копия/i.test(row.title) ? row.title : `${row.title} (копия)`,
+    titleKz: /көшірме/i.test(row.titleKz)
+      ? row.titleKz
+      : `${row.titleKz} (көшірме)`,
+    section: row.section,
+    examType: "ENT",
+    subject: row.subject,
+    durationMinutes: row.durationMinutes,
+    questionCount: questions.length,
+    isFree: row.isFree !== false,
+    priceTenge: row.priceTenge,
+    description: row.description ?? "",
+    coverImage: row.coverImage ?? "",
+    questions,
+    createdAt: now,
+    updatedAt: now,
+  });
+  res.status(201).json({ ok: true, id: newId });
+});
+
+adminRouter.post("/files", (req, res, next) => {
+  imageUpload.single("file")(req, res, (err: unknown) => {
+    if (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Ошибка загрузки",
+      });
+      return;
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: "Файл не загружен (field: file)" });
+      return;
+    }
+    const kind = req.body?.kind === "cover" ? "cover" : "question";
+    const stored = await storeImage({
+      buffer: req.file.buffer,
+      filename: req.file.originalname || "image",
+      contentType: req.file.mimetype,
+      metadata: { kind },
+    });
+    res.status(201).json(stored);
+  } catch (e) {
+    res.status(400).json({
+      error: e instanceof Error ? e.message : "Ошибка загрузки",
+    });
+  }
+});
+
 adminRouter.post("/tests/upload", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -328,6 +418,8 @@ adminRouter.post("/tests/upload", upload.single("file"), async (req, res) => {
     const text = req.file.buffer.toString("utf8");
     const json = JSON.parse(text) as unknown;
     const payload = validateTestPayload(json);
+    payload.coverImage = await persistCoverImage(payload.coverImage);
+    payload.questions = await persistQuestionImages(payload.questions);
     await upsertTest(payload);
     res.status(201).json({
       ok: true,

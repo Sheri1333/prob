@@ -47,12 +47,14 @@ export interface TestDefinition {
   title: string;
   titleKz: string;
   section: string;
-  examType: "ENT" | "OGE";
+  examType: "ENT";
   subject: string;
   durationMinutes: number;
   questionCount: number;
   isFree: boolean;
   priceTenge?: number;
+  description?: string;
+  coverImage?: string;
   questions: Question[];
 }
 
@@ -60,7 +62,7 @@ export interface CatalogItem {
   id: string;
   title: string;
   titleKz: string;
-  examType: "ENT" | "OGE";
+  examType: "ENT";
   subject: string;
   section: string;
   durationMinutes: number;
@@ -68,6 +70,7 @@ export interface CatalogItem {
   isFree: boolean;
   priceTenge?: number;
   description: string;
+  coverImage?: string;
 }
 
 export type AnswerValue = string | string[] | Record<string, string>;

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { api } from "../api/client";
+import { api, mediaUrl } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
+import { ToastHost, useToasts } from "../components/Toast";
 import type { Question, QuestionType, TestDefinition } from "../types/test";
 import {
   createBlankQuestion,
@@ -21,18 +22,17 @@ const EMPTY_META = {
   titleKz: "",
   section: "",
   subject: "",
-  examType: "ENT",
   durationMinutes: 50,
   isFree: true,
   priceTenge: "" as string,
   description: "",
+  coverImage: "",
 };
 
 export function AdminPage() {
   const { user, loading, isAdmin, logout } = useAuth();
+  const { toasts, push: toast, dismiss: dismissToast } = useToasts();
   const [tab, setTab] = useState<Tab>("dashboard");
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
 
   const [stats, setStats] = useState<Awaited<
     ReturnType<typeof api.adminStats>
@@ -56,7 +56,6 @@ export function AdminPage() {
   const [addType, setAddType] = useState<QuestionType>("single_choice");
 
   const load = useCallback(async () => {
-    setError("");
     try {
       if (tab === "dashboard") setStats(await api.adminStats());
       if (tab === "users") setUsers((await api.adminUsers()).users);
@@ -65,9 +64,9 @@ export function AdminPage() {
         setTests((await api.adminTests()).tests);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка загрузки");
+      toast("error", e instanceof Error ? e.message : "Ошибка загрузки");
     }
-  }, [tab]);
+  }, [tab, toast]);
 
   useEffect(() => {
     if (isAdmin) void load();
@@ -112,8 +111,6 @@ export function AdminPage() {
     setOnlyMissing(false);
     setOpenPreviewId(1);
     setTab("editor");
-    setError("");
-    setMessage("Заполните карточку теста и добавьте вопросы.");
   }
 
   function addQuestion() {
@@ -136,8 +133,6 @@ export function AdminPage() {
   async function handlePdfFile(file: File | null) {
     if (!file) return;
     setParsing(true);
-    setError("");
-    setMessage("");
     try {
       const result = await api.adminParsePdf(file);
       setParseResult(result);
@@ -150,11 +145,11 @@ export function AdminPage() {
         titleKz: d.titleKz,
         section: d.section,
         subject: d.subject,
-        examType: d.examType,
         durationMinutes: d.durationMinutes,
         isFree: d.isFree,
         priceTenge: d.priceTenge != null ? String(d.priceTenge) : "",
         description: d.description ?? "",
+        coverImage: d.coverImage ?? "",
       });
       setOpenPreviewId(
         result.draft.questions.find((q) => !isAnswerKeyComplete(q))?.id ??
@@ -162,11 +157,12 @@ export function AdminPage() {
           null,
       );
       setTab("editor");
-      setMessage(
-        `PDF разобран: ${result.parse.questions.length} вопросов, жёлтых ключей: ${result.parse.keysFromHighlight ?? 0}.`,
+      toast(
+        "ok",
+        `PDF разобран: ${result.parse.questions.length} вопросов, жёлтых ключей: ${result.parse.keysFromHighlight ?? 0}`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка разбора PDF");
+      toast("error", err instanceof Error ? err.message : "Ошибка разбора PDF");
     } finally {
       setParsing(false);
     }
@@ -175,8 +171,6 @@ export function AdminPage() {
   async function handleSavePreview() {
     if (!draftQuestions.length) return;
     setSavingPreview(true);
-    setError("");
-    setMessage("");
     try {
       const missing = draftQuestions
         .filter((q) => !isAnswerKeyComplete(q))
@@ -197,24 +191,26 @@ export function AdminPage() {
         titleKz: previewMeta.titleKz.trim() || previewMeta.title.trim(),
         section: previewMeta.section.trim() || previewMeta.subject.trim(),
         subject: previewMeta.subject.trim(),
-        examType: previewMeta.examType as "ENT" | "OGE",
+        examType: "ENT",
         durationMinutes: Number(previewMeta.durationMinutes) || 50,
         isFree: previewMeta.isFree,
         priceTenge: previewMeta.priceTenge
           ? Number(previewMeta.priceTenge)
           : undefined,
         description: previewMeta.description,
+        coverImage: previewMeta.coverImage,
         questionCount: draftQuestions.length,
         questions: draftQuestions,
       };
       await api.adminSaveTest(payload);
       setPreviewMeta((m) => ({ ...m, id }));
-      setMessage(
+      toast(
+        "ok",
         `Тест «${payload.title}» сохранён · ${payload.questions.length} вопросов`,
       );
       setTests((await api.adminTests()).tests);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка сохранения");
+      toast("error", err instanceof Error ? err.message : "Ошибка сохранения");
     } finally {
       setSavingPreview(false);
     }
@@ -224,10 +220,20 @@ export function AdminPage() {
     if (!window.confirm(`Удалить тест ${id}?`)) return;
     try {
       await api.adminDeleteTest(id);
-      setMessage(`Удалён ${id}`);
+      toast("ok", `Тест удалён`);
       setTests((await api.adminTests()).tests);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка удаления");
+      toast("error", err instanceof Error ? err.message : "Ошибка удаления");
+    }
+  }
+
+  async function handleDuplicate(id: string) {
+    try {
+      const { id: newId } = await api.adminDuplicateTest(id);
+      toast("ok", `Создана копия: ${newId}`);
+      setTests((await api.adminTests()).tests);
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Ошибка дублирования");
     }
   }
 
@@ -243,22 +249,23 @@ export function AdminPage() {
         titleKz: test.titleKz,
         section: test.section,
         subject: test.subject,
-        examType: test.examType,
         durationMinutes: test.durationMinutes,
         isFree: test.isFree,
         priceTenge: test.priceTenge != null ? String(test.priceTenge) : "",
-        description: "",
+        description: test.description ?? "",
+        coverImage: test.coverImage ?? "",
       });
       setOpenPreviewId(test.questions[0]?.id ?? null);
       setTab("editor");
-      setMessage(`Редактирование: ${test.title}`);
+      toast("ok", `Тест «${test.title}» открыт`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
+      toast("error", err instanceof Error ? err.message : "Не удалось открыть тест");
     }
   }
 
   return (
     <div className="admin-page">
+      <ToastHost toasts={toasts} onDismiss={dismissToast} />
       <aside className="admin-sidebar">
         <Link to="/" className="admin-sidebar__brand">
           <strong>PROB</strong>
@@ -296,9 +303,6 @@ export function AdminPage() {
       </aside>
 
       <main className="admin-main">
-        {error && <p className="admin-alert admin-alert--error">{error}</p>}
-        {message && <p className="admin-alert admin-alert--ok">{message}</p>}
-
         {tab === "dashboard" && stats && (
           <section>
             <div className="admin-page-head">
@@ -400,7 +404,7 @@ export function AdminPage() {
               </div>
             ) : (
               <div className="admin-panel">
-                <table className="admin-table">
+                <table className="admin-table admin-table--actions">
                   <thead>
                     <tr>
                       <th>Название</th>
@@ -420,7 +424,7 @@ export function AdminPage() {
                         </td>
                         <td>{t.subject}</td>
                         <td>{t.questionCount}</td>
-                        <td>{t.isFree ? "бесплатно" : `${t.priceTenge} ₸`}</td>
+                        <td>{t.isFree !== false ? "бесплатно" : `${t.priceTenge ?? 0} ₸`}</td>
                         <td>
                           <div className="admin-table__actions">
                             <button
@@ -428,6 +432,12 @@ export function AdminPage() {
                               onClick={() => void loadTestForEdit(t.id)}
                             >
                               Редактировать
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDuplicate(t.id)}
+                            >
+                              Дублировать
                             </button>
                             <button
                               type="button"
@@ -581,21 +591,6 @@ export function AdminPage() {
                     />
                   </label>
                   <label>
-                    Тип
-                    <select
-                      value={previewMeta.examType}
-                      onChange={(e) =>
-                        setPreviewMeta((m) => ({
-                          ...m,
-                          examType: e.target.value,
-                        }))
-                      }
-                    >
-                      <option value="ENT">ЕНТ</option>
-                      <option value="OGE">ОГЭ</option>
-                    </select>
-                  </label>
-                  <label>
                     Минут
                     <input
                       type="number"
@@ -635,6 +630,67 @@ export function AdminPage() {
                         }))
                       }
                     />
+                  </label>
+                  <label className="admin-meta-form__full">
+                    Обложка теста
+                    <div className="admin-cover">
+                      {previewMeta.coverImage ? (
+                        <img
+                          src={mediaUrl(previewMeta.coverImage)}
+                          alt="Обложка"
+                        />
+                      ) : (
+                        <div className="admin-cover__empty">Нет картинки</div>
+                      )}
+                      <div className="admin-cover__actions">
+                        <label className="admin-btn">
+                          {previewMeta.coverImage
+                            ? "Заменить картинку"
+                            : "Прикрепить картинку"}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            hidden
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!file) return;
+                              void (async () => {
+                                try {
+                                  const { url } = await api.adminUploadImage(
+                                    file,
+                                    "cover",
+                                  );
+                                  setPreviewMeta((m) => ({
+                                    ...m,
+                                    coverImage: url,
+                                  }));
+                                  toast("ok", "Обложка загружена");
+                                } catch (err) {
+                                  toast(
+                                    "error",
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Не удалось загрузить картинку",
+                                  );
+                                }
+                              })();
+                            }}
+                          />
+                        </label>
+                        {previewMeta.coverImage && (
+                          <button
+                            type="button"
+                            className="admin-btn"
+                            onClick={() =>
+                              setPreviewMeta((m) => ({ ...m, coverImage: "" }))
+                            }
+                          >
+                            Убрать
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </label>
                   <label className="admin-meta-form__full">
                     Описание
@@ -688,6 +744,24 @@ export function AdminPage() {
                   onOpen={setOpenPreviewId}
                   onlyMissing={onlyMissing}
                   onRemove={removeQuestion}
+                  onUploadImage={async (file) => {
+                    try {
+                      const { url } = await api.adminUploadImage(
+                        file,
+                        "question",
+                      );
+                      toast("ok", "Картинка добавлена к вопросу");
+                      return url;
+                    } catch (err) {
+                      toast(
+                        "error",
+                        err instanceof Error
+                          ? err.message
+                          : "Не удалось загрузить картинку",
+                      );
+                      throw err;
+                    }
+                  }}
                 />
 
                 <div className="admin-add-q">

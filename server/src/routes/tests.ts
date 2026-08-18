@@ -16,19 +16,21 @@ function toCatalogItem(row: {
   isFree: boolean;
   priceTenge: number | null;
   description: string;
+  coverImage?: string;
 }) {
   return {
     id: row._id,
     title: row.title,
     titleKz: row.titleKz,
-    examType: row.examType,
+    examType: "ENT" as const,
     subject: row.subject,
     section: row.section,
     durationMinutes: row.durationMinutes,
     questionCount: row.questionCount,
-    isFree: row.isFree,
+    isFree: row.isFree !== false,
     priceTenge: row.priceTenge ?? undefined,
     description: row.description,
+    coverImage: row.coverImage || undefined,
   };
 }
 

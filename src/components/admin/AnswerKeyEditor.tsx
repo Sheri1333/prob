@@ -15,6 +15,7 @@ interface AnswerKeyEditorProps {
   onOpen: (id: number | null) => void;
   onlyMissing: boolean;
   onRemove?: (index: number) => void;
+  onUploadImage?: (file: File) => Promise<string>;
 }
 
 export function AnswerKeyEditor({
@@ -24,6 +25,7 @@ export function AnswerKeyEditor({
   onOpen,
   onlyMissing,
   onRemove,
+  onUploadImage,
 }: AnswerKeyEditorProps) {
   const updateAt = (index: number, next: Question) => {
     const copy = [...questions];
@@ -100,13 +102,47 @@ export function AnswerKeyEditor({
                 {q.images && q.images.length > 0 && (
                   <div className="admin-q__photos">
                     {q.images.map((src, i) => (
-                      <img
-                        key={`${q.id}-${i}`}
-                        src={mediaUrl(src)}
-                        alt={`Вопрос ${q.id} рис. ${i + 1}`}
-                      />
+                      <div key={`${q.id}-${i}`} className="admin-q__photo">
+                        <img
+                          src={mediaUrl(src)}
+                          alt={`Вопрос ${q.id} рис. ${i + 1}`}
+                        />
+                        <button
+                          type="button"
+                          className="admin-q__photo-remove"
+                          onClick={() =>
+                            updateAt(index, {
+                              ...q,
+                              images: (q.images ?? []).filter((_, j) => j !== i),
+                            })
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
                     ))}
                   </div>
+                )}
+                {onUploadImage && (
+                  <label className="admin-btn admin-q__add-photo">
+                    Прикрепить картинку
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        void onUploadImage(file).then((url) => {
+                          updateAt(index, {
+                            ...q,
+                            images: [...(q.images ?? []), url],
+                          });
+                        });
+                      }}
+                    />
+                  </label>
                 )}
 
                 {q.type === "matching" ? (

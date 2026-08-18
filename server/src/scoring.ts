@@ -54,6 +54,7 @@ export interface TestPayload {
   isFree?: boolean;
   priceTenge?: number | null;
   description?: string;
+  coverImage?: string;
   questions: Question[];
 }
 
@@ -174,7 +175,6 @@ export function validateTestPayload(body: unknown): TestPayload {
   if (typeof b.title !== "string") throw new Error("title обязателен");
   if (typeof b.titleKz !== "string") throw new Error("titleKz обязателен");
   if (typeof b.section !== "string") throw new Error("section обязателен");
-  if (typeof b.examType !== "string") throw new Error("examType обязателен");
   if (typeof b.subject !== "string") throw new Error("subject обязателен");
   if (typeof b.durationMinutes !== "number") {
     throw new Error("durationMinutes обязателен");
@@ -188,12 +188,13 @@ export function validateTestPayload(body: unknown): TestPayload {
     title: b.title,
     titleKz: b.titleKz,
     section: b.section,
-    examType: b.examType,
+    examType: "ENT",
     subject: b.subject,
     durationMinutes: b.durationMinutes,
     isFree: b.isFree !== false,
     priceTenge: typeof b.priceTenge === "number" ? b.priceTenge : null,
     description: typeof b.description === "string" ? b.description : "",
+    coverImage: typeof b.coverImage === "string" ? b.coverImage : "",
     questions: b.questions as Question[],
   };
 }
