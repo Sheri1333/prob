@@ -1,3 +1,5 @@
+import { newTestId } from "./ids.js";
+
 export type QuestionType = "single_choice" | "multiple_choice" | "matching";
 
 export interface TestOption {
@@ -171,7 +173,7 @@ export function validateTestPayload(body: unknown): TestPayload {
     throw new Error("Некорректное тело запроса");
   }
   const b = body as Record<string, unknown>;
-  if (typeof b.id !== "string" || !b.id.trim()) throw new Error("id обязателен");
+  const requestedId = typeof b.id === "string" ? b.id.trim() : "";
   if (typeof b.title !== "string") throw new Error("title обязателен");
   if (typeof b.titleKz !== "string") throw new Error("titleKz обязателен");
   if (typeof b.section !== "string") throw new Error("section обязателен");
@@ -184,7 +186,7 @@ export function validateTestPayload(body: unknown): TestPayload {
   }
   assertAnswerKeys(b.questions as Question[]);
   return {
-    id: b.id.trim(),
+    id: requestedId || newTestId(),
     title: b.title,
     titleKz: b.titleKz,
     section: b.section,

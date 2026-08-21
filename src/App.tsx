@@ -4,6 +4,8 @@ import { AuthProvider } from "./auth/AuthContext";
 import type { Lang } from "./i18n/strings";
 import { AdminPage } from "./pages/AdminPage";
 import { CatalogPage } from "./pages/CatalogPage";
+import { ExamPage } from "./pages/ExamPage";
+import { ExamResultsPage } from "./pages/ExamResultsPage";
 import { LoginPage, RegisterPage } from "./pages/LoginPage";
 import { ResultsPage } from "./pages/ResultsPage";
 import { TestPage } from "./pages/TestPage";
@@ -22,6 +24,14 @@ export function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route
+            path="/exam"
+            element={<ExamPage lang={lang} onToggleLang={toggleLang} />}
+          />
+          <Route
+            path="/exam/results"
+            element={<ExamResultsPage lang={lang} />}
+          />
           <Route
             path="/test/:testId"
             element={<TestPage lang={lang} onToggleLang={toggleLang} />}

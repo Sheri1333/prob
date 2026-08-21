@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Question } from "./scoring.js";
+import { isUuid, newTestId } from "./ids.js";
 import "./tlsSetup.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,8 @@ export interface AttemptDoc {
   maxScore: number;
   startedAt: Date;
   finishedAt: Date;
+  /** Full ENT session linking several section attempts. */
+  sessionId?: string;
 }
 
 let client: MongoClient | null = null;
@@ -127,8 +130,29 @@ export async function connectDb(): Promise<Db> {
   await database.collection<AttemptDoc>("attempts").createIndex({ testId: 1 });
   await database.collection<AttemptDoc>("attempts").createIndex({ finishedAt: -1 });
 
+  await migrateTestIdsToUuid(database);
+
   console.log("MongoDB connected: db=prob");
   return database;
+}
+
+async function migrateTestIdsToUuid(db: Db): Promise<void> {
+  const testCol = db.collection<TestDoc>("tests");
+  const attemptCol = db.collection<AttemptDoc>("attempts");
+  const rows = await testCol.find().toArray();
+  let moved = 0;
+  for (const row of rows) {
+    if (isUuid(row._id)) continue;
+    const nextId = newTestId();
+    const { _id: _oldId, ...rest } = row;
+    await testCol.insertOne({ ...rest, _id: nextId });
+    await attemptCol.updateMany({ testId: row._id }, { $set: { testId: nextId } });
+    await testCol.deleteOne({ _id: row._id });
+    moved += 1;
+  }
+  if (moved > 0) {
+    console.log(`Migrated ${moved} test id(s) to UUID`);
+  }
 }
 
 export function isDbReady(): boolean {

@@ -13,7 +13,6 @@ interface AnswerKeyEditorProps {
   onChange: (questions: Question[]) => void;
   openId: number | null;
   onOpen: (id: number | null) => void;
-  onlyMissing: boolean;
   onRemove?: (index: number) => void;
   onUploadImage?: (file: File) => Promise<string>;
 }
@@ -23,7 +22,6 @@ export function AnswerKeyEditor({
   onChange,
   openId,
   onOpen,
-  onlyMissing,
   onRemove,
   onUploadImage,
 }: AnswerKeyEditorProps) {
@@ -33,17 +31,13 @@ export function AnswerKeyEditor({
     onChange(copy);
   };
 
-  const visible = questions
-    .map((q, index) => ({ q, index }))
-    .filter(({ q }) => !onlyMissing || !isAnswerKeyComplete(q));
-
-  if (visible.length === 0) {
-    return <p className="admin-hint">Все вопросы уже с ключами ответов.</p>;
+  if (questions.length === 0) {
+    return <p className="admin-hint">Добавьте первый вопрос.</p>;
   }
 
   return (
     <div className="admin-preview__questions">
-      {visible.map(({ q, index }) => {
+      {questions.map((q, index) => {
         const open = openId === q.id;
         const keyed = isAnswerKeyComplete(q);
         return (

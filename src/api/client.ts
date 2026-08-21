@@ -1,4 +1,8 @@
 import type { AnswerValue, CatalogItem, Question, TestDefinition } from "../types/test";
+import type {
+  ExamStartResponse,
+  ExamSubmitResponse,
+} from "../utils/examDraft";
 
 const TOKEN_KEY = "prob_token";
 const USER_KEY = "prob_user";
@@ -93,6 +97,46 @@ export const api = {
 
   getCatalog() {
     return request<{ tests: CatalogItem[] }>("/tests");
+  },
+
+  getExamBlueprint() {
+    return request<{
+      durationMinutes: number;
+      profileCount: number;
+      ready: boolean;
+      mandatory: Array<{
+        key: string;
+        label: { kz: string; ru: string };
+        variantCount: number;
+        ready: boolean;
+      }>;
+      profileSubjects: Array<{
+        key: string;
+        subject: string;
+        variantCount: number;
+      }>;
+    }>("/exams/blueprint");
+  },
+
+  startExam(body: { profileSubjects: string[]; excludeTestIds?: string[] }) {
+    return request<ExamStartResponse>("/exams/start", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  submitExam(body: {
+    sessionId: string;
+    startedAt: string;
+    sections: Array<{
+      testId: string;
+      answers: Record<string, AnswerValue>;
+    }>;
+  }) {
+    return request<ExamSubmitResponse>("/exams/submit", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   },
 
   getTest(id: string) {

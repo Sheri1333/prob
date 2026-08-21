@@ -69,16 +69,6 @@ export function createBlankQuestion(
   return { id, type: "single_choice", text: "", options, correctAnswer: "" };
 }
 
-export function slugFromTitle(title: string): string {
-  const slug = title
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return slug || `test-${Date.now().toString(36)}`;
-}
-
 export function convertQuestionType(
   question: Question,
   type: QuestionType,

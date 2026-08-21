@@ -4,12 +4,9 @@ import { ObjectId } from "mongodb";
 import { attempts, tests, toObjectId, users } from "../db.js";
 import { adminRequired, type AuthedRequest } from "../auth.js";
 import { validateTestPayload, type Question } from "../scoring.js";
-import {
-  parsePdfBuffer,
-  slugFromFilename,
-  toTestQuestions,
-} from "../pdfParser.js";
 import { persistCoverImage, persistQuestionImages, storeImage } from "../gridfs.js";
+import { parsePdfBuffer, toTestQuestions } from "../pdfParser.js";
+import { isUuid, newTestId } from "../ids.js";
 
 export const adminRouter = Router();
 const upload = multer({
@@ -31,15 +28,10 @@ const imageUpload = multer({
 
 adminRouter.use(adminRequired);
 
-async function uniqueCopyId(sourceId: string): Promise<string> {
-  const base = sourceId.replace(/-copy(?:-\d+)?$/, "");
-  let id = `${base}-copy`;
-  let n = 2;
-  while (await tests().findOne({ _id: id })) {
-    id = `${base}-copy-${n}`;
-    n += 1;
-  }
-  return id;
+async function resolveTestId(requested: string): Promise<string> {
+  const existing = await tests().findOne({ _id: requested });
+  if (existing) return requested;
+  return isUuid(requested) ? requested : newTestId();
 }
 
 async function upsertTest(payload: ReturnType<typeof validateTestPayload>) {
@@ -311,6 +303,7 @@ adminRouter.get("/tests/:id", async (req, res) => {
 adminRouter.post("/tests", async (req: AuthedRequest, res) => {
   try {
     const payload = validateTestPayload(req.body);
+    payload.id = await resolveTestId(payload.id);
     payload.coverImage = await persistCoverImage(payload.coverImage);
     payload.questions = await persistQuestionImages(payload.questions);
     await upsertTest(payload);
@@ -353,7 +346,7 @@ adminRouter.post("/tests/:id/duplicate", async (req, res) => {
     res.status(404).json({ error: "Тест не найден" });
     return;
   }
-  const newId = await uniqueCopyId(row._id);
+  const newId = newTestId();
   const now = new Date();
   const questions = JSON.parse(JSON.stringify(row.questions)) as Question[];
   await tests().insertOne({
@@ -418,6 +411,7 @@ adminRouter.post("/tests/upload", upload.single("file"), async (req, res) => {
     const text = req.file.buffer.toString("utf8");
     const json = JSON.parse(text) as unknown;
     const payload = validateTestPayload(json);
+    payload.id = await resolveTestId(payload.id);
     payload.coverImage = await persistCoverImage(payload.coverImage);
     payload.questions = await persistQuestionImages(payload.questions);
     await upsertTest(payload);
@@ -453,9 +447,8 @@ adminRouter.post("/tests/parse-pdf", upload.single("file"), async (req, res) => 
       return;
     }
 
-    const slug = slugFromFilename(req.file.originalname);
     const draft = {
-      id: `ent-${slug}`,
+      id: newTestId(),
       title: `ЕНТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
       titleKz: `ҰБТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
       section: "География",

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
+import { ExamTools } from "../components/ExamTools";
 import { QuestionView } from "../components/QuestionView";
 import { TestFooter } from "../components/TestFooter";
 import { TestHeader } from "../components/TestHeader";
@@ -263,6 +264,8 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
         onFinish={handleFinish}
         finishing={finishing}
       />
+
+      <ExamTools lang={lang} />
 
       {mapOpen && (
         <div

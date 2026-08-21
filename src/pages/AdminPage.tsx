@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { api, mediaUrl } from "../api/client";
+import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
 import { ToastHost, useToasts } from "../components/Toast";
@@ -10,7 +10,6 @@ import {
   isAnswerKeyComplete,
   keyedCount,
   nextQuestionId,
-  slugFromTitle,
 } from "../utils/answerKey";
 
 type Tab = "dashboard" | "tests" | "editor" | "users" | "attempts";
@@ -26,7 +25,6 @@ const EMPTY_META = {
   isFree: true,
   priceTenge: "" as string,
   description: "",
-  coverImage: "",
 };
 
 export function AdminPage() {
@@ -50,7 +48,6 @@ export function AdminPage() {
   const [savingPreview, setSavingPreview] = useState(false);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [draftQuestions, setDraftQuestions] = useState<Question[]>([]);
-  const [onlyMissing, setOnlyMissing] = useState(false);
   const [previewMeta, setPreviewMeta] = useState(EMPTY_META);
   const [openPreviewId, setOpenPreviewId] = useState<number | null>(1);
   const [addType, setAddType] = useState<QuestionType>("single_choice");
@@ -99,7 +96,6 @@ export function AdminPage() {
     setParseResult(null);
     setDraftQuestions([]);
     setPreviewMeta(EMPTY_META);
-    setOnlyMissing(false);
     setOpenPreviewId(null);
   }
 
@@ -107,8 +103,7 @@ export function AdminPage() {
     const first = createBlankQuestion(1);
     setParseResult(null);
     setDraftQuestions([first]);
-    setPreviewMeta(EMPTY_META);
-    setOnlyMissing(false);
+    setPreviewMeta({ ...EMPTY_META, id: crypto.randomUUID() });
     setOpenPreviewId(1);
     setTab("editor");
   }
@@ -137,10 +132,9 @@ export function AdminPage() {
       const result = await api.adminParsePdf(file);
       setParseResult(result);
       setDraftQuestions(result.draft.questions);
-      setOnlyMissing(false);
       const d = result.draft;
       setPreviewMeta({
-        id: d.id,
+        id: d.id || crypto.randomUUID(),
         title: d.title,
         titleKz: d.titleKz,
         section: d.section,
@@ -149,7 +143,6 @@ export function AdminPage() {
         isFree: d.isFree,
         priceTenge: d.priceTenge != null ? String(d.priceTenge) : "",
         description: d.description ?? "",
-        coverImage: d.coverImage ?? "",
       });
       setOpenPreviewId(
         result.draft.questions.find((q) => !isAnswerKeyComplete(q))?.id ??
@@ -177,14 +170,13 @@ export function AdminPage() {
         .map((q) => q.id);
       if (missing.length > 0) {
         setOpenPreviewId(missing[0]);
-        setOnlyMissing(true);
         throw new Error(
           `Отметьте правильные ответы у вопросов: ${missing.join(", ")}`,
         );
       }
       if (!previewMeta.title.trim()) throw new Error("Укажите название теста");
       if (!previewMeta.subject.trim()) throw new Error("Укажите предмет");
-      const id = previewMeta.id.trim() || slugFromTitle(previewMeta.title);
+      const id = previewMeta.id.trim() || crypto.randomUUID();
       const payload: TestDefinition & { description?: string } = {
         id,
         title: previewMeta.title.trim(),
@@ -198,7 +190,6 @@ export function AdminPage() {
           ? Number(previewMeta.priceTenge)
           : undefined,
         description: previewMeta.description,
-        coverImage: previewMeta.coverImage,
         questionCount: draftQuestions.length,
         questions: draftQuestions,
       };
@@ -216,8 +207,8 @@ export function AdminPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!window.confirm(`Удалить тест ${id}?`)) return;
+  async function handleDelete(id: string, title: string) {
+    if (!window.confirm(`Удалить тест «${title}»?`)) return;
     try {
       await api.adminDeleteTest(id);
       toast("ok", `Тест удалён`);
@@ -242,7 +233,6 @@ export function AdminPage() {
       const { test } = await api.adminGetTest(id);
       setParseResult(null);
       setDraftQuestions(test.questions);
-      setOnlyMissing(false);
       setPreviewMeta({
         id: test.id,
         title: test.title,
@@ -253,7 +243,6 @@ export function AdminPage() {
         isFree: test.isFree,
         priceTenge: test.priceTenge != null ? String(test.priceTenge) : "",
         description: test.description ?? "",
-        coverImage: test.coverImage ?? "",
       });
       setOpenPreviewId(test.questions[0]?.id ?? null);
       setTab("editor");
@@ -419,8 +408,6 @@ export function AdminPage() {
                       <tr key={t.id}>
                         <td>
                           <strong>{t.title}</strong>
-                          <br />
-                          <small>{t.id}</small>
                         </td>
                         <td>{t.subject}</td>
                         <td>{t.questionCount}</td>
@@ -442,7 +429,7 @@ export function AdminPage() {
                             <button
                               type="button"
                               className="danger"
-                              onClick={() => void handleDelete(t.id)}
+                              onClick={() => void handleDelete(t.id, t.title)}
                             >
                               Удалить
                             </button>
@@ -581,16 +568,6 @@ export function AdminPage() {
                     />
                   </label>
                   <label>
-                    Код (необязательно)
-                    <input
-                      value={previewMeta.id}
-                      placeholder="подставится из названия"
-                      onChange={(e) =>
-                        setPreviewMeta((m) => ({ ...m, id: e.target.value }))
-                      }
-                    />
-                  </label>
-                  <label>
                     Минут
                     <input
                       type="number"
@@ -632,67 +609,6 @@ export function AdminPage() {
                     />
                   </label>
                   <label className="admin-meta-form__full">
-                    Обложка теста
-                    <div className="admin-cover">
-                      {previewMeta.coverImage ? (
-                        <img
-                          src={mediaUrl(previewMeta.coverImage)}
-                          alt="Обложка"
-                        />
-                      ) : (
-                        <div className="admin-cover__empty">Нет картинки</div>
-                      )}
-                      <div className="admin-cover__actions">
-                        <label className="admin-btn">
-                          {previewMeta.coverImage
-                            ? "Заменить картинку"
-                            : "Прикрепить картинку"}
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp,image/gif"
-                            hidden
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              e.target.value = "";
-                              if (!file) return;
-                              void (async () => {
-                                try {
-                                  const { url } = await api.adminUploadImage(
-                                    file,
-                                    "cover",
-                                  );
-                                  setPreviewMeta((m) => ({
-                                    ...m,
-                                    coverImage: url,
-                                  }));
-                                  toast("ok", "Обложка загружена");
-                                } catch (err) {
-                                  toast(
-                                    "error",
-                                    err instanceof Error
-                                      ? err.message
-                                      : "Не удалось загрузить картинку",
-                                  );
-                                }
-                              })();
-                            }}
-                          />
-                        </label>
-                        {previewMeta.coverImage && (
-                          <button
-                            type="button"
-                            className="admin-btn"
-                            onClick={() =>
-                              setPreviewMeta((m) => ({ ...m, coverImage: "" }))
-                            }
-                          >
-                            Убрать
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </label>
-                  <label className="admin-meta-form__full">
                     Описание
                     <textarea
                       rows={2}
@@ -726,14 +642,6 @@ export function AdminPage() {
                       }}
                     />
                   </div>
-                  <label className="admin-key-progress__filter">
-                    <input
-                      type="checkbox"
-                      checked={onlyMissing}
-                      onChange={(e) => setOnlyMissing(e.target.checked)}
-                    />
-                    Только без ключа
-                  </label>
                 </div>
 
                 <h2>Вопросы</h2>
@@ -742,7 +650,6 @@ export function AdminPage() {
                   onChange={setDraftQuestions}
                   openId={openPreviewId}
                   onOpen={setOpenPreviewId}
-                  onlyMissing={onlyMissing}
                   onRemove={removeQuestion}
                   onUploadImage={async (file) => {
                     try {

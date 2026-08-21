@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "seed": "tsx src/seedEnt.ts",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts"
   },
