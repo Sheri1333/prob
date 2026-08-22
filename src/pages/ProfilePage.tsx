@@ -25,7 +25,7 @@ export function ProfilePage() {
     <div className="page">
       <header className="site-header">
         <Link to="/" className="site-header__logo">
-          PROB
+          Талапкер
         </Link>
         <nav className="site-header__nav">
           <span>{user.name}</span>

@@ -102,7 +102,6 @@ export const api = {
   getExamBlueprint() {
     return request<{
       durationMinutes: number;
-      profileCount: number;
       ready: boolean;
       mandatory: Array<{
         key: string;
@@ -110,15 +109,24 @@ export const api = {
         variantCount: number;
         ready: boolean;
       }>;
-      profileSubjects: Array<{
-        key: string;
-        subject: string;
-        variantCount: number;
+      combinations: Array<{
+        id: string;
+        labelKz: string;
+        labelRu: string;
+        subject1: string;
+        subject2: string;
+        ready: boolean;
+        variantCount1: number;
+        variantCount2: number;
       }>;
     }>("/exams/blueprint");
   },
 
-  startExam(body: { profileSubjects: string[]; excludeTestIds?: string[] }) {
+  startExam(body: {
+    comboId?: string;
+    profileSubjects?: string[];
+    excludeTestIds?: string[];
+  }) {
     return request<ExamStartResponse>("/exams/start", {
       method: "POST",
       body: JSON.stringify(body),

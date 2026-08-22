@@ -6,9 +6,10 @@ import { newTestId } from "../ids.js";
 import {
   detectEntBlock,
   ENT_BLOCK_LABELS,
-  ENT_PROFILE_COUNT,
+  ENT_PROFILE_COMBOS,
   ENT_TOTAL_MINUTES,
-  normalizeSubject,
+  getProfileCombo,
+  subjectPoolKey,
   type EntBlockKind,
 } from "../ent.js";
 import { scoreTest, stripAnswers, type AnswerValue } from "../scoring.js";
@@ -25,14 +26,13 @@ function pickVariant(
   return source[Math.floor(Math.random() * source.length)] ?? null;
 }
 
-examsRouter.get("/blueprint", optionalAuth, async (req: AuthedRequest, res) => {
-  const rows = await tests().find().toArray();
+function groupTests(rows: TestDoc[]) {
   const byBlock: Record<string, TestDoc[]> = {
     history: [],
     reading: [],
     math_literacy: [],
   };
-  const profileBySubject = new Map<string, TestDoc[]>();
+  const profileByKey = new Map<string, TestDoc[]>();
 
   for (const row of rows) {
     const block = detectEntBlock(row.subject);
@@ -40,12 +40,18 @@ examsRouter.get("/blueprint", optionalAuth, async (req: AuthedRequest, res) => {
       byBlock[block].push(row);
       continue;
     }
-    const key = normalizeSubject(row.subject);
+    const key = subjectPoolKey(row.subject);
     if (!key) continue;
-    const list = profileBySubject.get(key) ?? [];
+    const list = profileByKey.get(key) ?? [];
     list.push(row);
-    profileBySubject.set(key, list);
+    profileByKey.set(key, list);
   }
+  return { byBlock, profileByKey };
+}
+
+examsRouter.get("/blueprint", optionalAuth, async (_req: AuthedRequest, res) => {
+  const rows = await tests().find().toArray();
+  const { byBlock, profileByKey } = groupTests(rows);
 
   const mandatory = (
     ["history", "reading", "math_literacy"] as const
@@ -56,43 +62,56 @@ examsRouter.get("/blueprint", optionalAuth, async (req: AuthedRequest, res) => {
     ready: byBlock[key].length > 0,
   }));
 
-  const profileSubjects = [...profileBySubject.entries()]
-    .map(([key, list]) => ({
-      key,
-      subject: list[0].subject,
-      variantCount: list.length,
-    }))
-    .sort((a, b) => a.subject.localeCompare(b.subject, "ru"));
+  const combinations = ENT_PROFILE_COMBOS.map((combo) => {
+    const k1 = subjectPoolKey(combo.subject1);
+    const k2 = subjectPoolKey(combo.subject2);
+    const pool1 = profileByKey.get(k1) ?? [];
+    const pool2 = profileByKey.get(k2) ?? [];
+    const same = k1 === k2;
+    const ready = same
+      ? pool1.length >= 1
+      : pool1.length > 0 && pool2.length > 0;
+    return {
+      id: combo.id,
+      labelKz: combo.labelKz,
+      labelRu: combo.labelRu,
+      subject1: combo.subject1,
+      subject2: combo.subject2,
+      ready,
+      variantCount1: pool1.length,
+      variantCount2: pool2.length,
+    };
+  });
 
   res.json({
     durationMinutes: ENT_TOTAL_MINUTES,
-    profileCount: ENT_PROFILE_COUNT,
     mandatory,
-    profileSubjects,
+    combinations,
     ready:
-      mandatory.every((m) => m.ready) &&
-      profileSubjects.length >= ENT_PROFILE_COUNT,
+      mandatory.every((m) => m.ready) && combinations.some((c) => c.ready),
   });
 });
 
 examsRouter.post("/start", optionalAuth, async (req: AuthedRequest, res) => {
   const body = req.body as {
+    comboId?: string;
     profileSubjects?: string[];
     excludeTestIds?: string[];
   };
 
-  const profileKeys = (body.profileSubjects ?? [])
-    .map((s) => normalizeSubject(String(s)))
-    .filter(Boolean);
+  let profileLabels: string[] = [];
 
-  if (profileKeys.length !== ENT_PROFILE_COUNT) {
-    res.status(400).json({
-      error: `Выберите ${ENT_PROFILE_COUNT} профильных предмета`,
-    });
-    return;
-  }
-  if (new Set(profileKeys).size !== profileKeys.length) {
-    res.status(400).json({ error: "Профильные предметы должны быть разными" });
+  if (body.comboId) {
+    const combo = getProfileCombo(body.comboId);
+    if (!combo) {
+      res.status(400).json({ error: "Неизвестная комбинация предметов" });
+      return;
+    }
+    profileLabels = [combo.subject1, combo.subject2];
+  } else if (Array.isArray(body.profileSubjects) && body.profileSubjects.length === 2) {
+    profileLabels = body.profileSubjects.map(String);
+  } else {
+    res.status(400).json({ error: "Выберите комбинацию бейіндік пәндер" });
     return;
   }
 
@@ -109,24 +128,7 @@ examsRouter.post("/start", optionalAuth, async (req: AuthedRequest, res) => {
   }
 
   const rows = await tests().find().toArray();
-  const byBlock: Record<string, TestDoc[]> = {
-    history: [],
-    reading: [],
-    math_literacy: [],
-  };
-  const profileBySubject = new Map<string, TestDoc[]>();
-
-  for (const row of rows) {
-    const block = detectEntBlock(row.subject);
-    if (block) {
-      byBlock[block].push(row);
-      continue;
-    }
-    const key = normalizeSubject(row.subject);
-    const list = profileBySubject.get(key) ?? [];
-    list.push(row);
-    profileBySubject.set(key, list);
-  }
+  const { byBlock, profileByKey } = groupTests(rows);
 
   const sections: Array<{
     block: EntBlockKind;
@@ -156,12 +158,13 @@ examsRouter.post("/start", optionalAuth, async (req: AuthedRequest, res) => {
     });
   }
 
-  for (const key of profileKeys) {
-    const pool = profileBySubject.get(key) ?? [];
+  for (const label of profileLabels) {
+    const key = subjectPoolKey(label);
+    const pool = profileByKey.get(key) ?? [];
     const picked = pickVariant(pool, used);
     if (!picked) {
       res.status(400).json({
-        error: `Нет вариантов для предмета «${key}»`,
+        error: `Нет пробного теста для предмета «${label}». Добавьте его в админке.`,
       });
       return;
     }
@@ -185,6 +188,8 @@ examsRouter.post("/start", optionalAuth, async (req: AuthedRequest, res) => {
   res.status(201).json({
     sessionId,
     durationMinutes: ENT_TOTAL_MINUTES,
+    comboId: body.comboId ?? null,
+    profileSubjects: profileLabels,
     startedAt: new Date().toISOString(),
     endsAt: Date.now() + ENT_TOTAL_MINUTES * 60 * 1000,
     sections: sections.map((s) => {

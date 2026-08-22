@@ -18,34 +18,29 @@ export function CatalogPage({ lang }: CatalogPageProps) {
   const [blueprint, setBlueprint] = useState<Awaited<
     ReturnType<typeof api.getExamBlueprint>
   > | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [comboId, setComboId] = useState("");
   const [starting, setStarting] = useState(false);
 
   useEffect(() => {
     api
       .getExamBlueprint()
-      .then(setBlueprint)
+      .then((bp) => {
+        setBlueprint(bp);
+        const firstReady = bp.combinations.find((c) => c.ready);
+        if (firstReady) setComboId(firstReady.id);
+      })
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Не удалось загрузить ЕНТ"),
       )
       .finally(() => setLoading(false));
   }, []);
 
-  const toggleProfile = (key: string) => {
-    setSelected((prev) => {
-      if (prev.includes(key)) return prev.filter((k) => k !== key);
-      if (prev.length >= 2) return [prev[1], key];
-      return [...prev, key];
-    });
-  };
+  const selected = blueprint?.combinations.find((c) => c.id === comboId);
 
   const startEnt = () => {
-    if (!blueprint || selected.length !== 2) return;
+    if (!blueprint || !comboId || !selected?.ready) return;
     setStarting(true);
-    const q = selected
-      .map((s) => `profile=${encodeURIComponent(s)}`)
-      .join("&");
-    navigate(`/exam?${q}`);
+    navigate(`/exam?combo=${encodeURIComponent(comboId)}`);
   };
 
   const resume = loadExamDraft();
@@ -53,7 +48,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
   return (
     <div className="page">
       <header className="site-header">
-        <div className="site-header__logo">PROB</div>
+        <div className="site-header__logo">Талапкер</div>
         <nav className="site-header__nav">
           <Link to="/admin">Админка</Link>
           {isAdmin && user && (
@@ -68,11 +63,11 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       </header>
 
       <section className="catalog catalog--ent">
-        <h2>{lang === "kz" ? "Пробный ЕНТ" : "Пробный ЕНТ"}</h2>
+        <h2>{lang === "kz" ? "Талапкер · ҰБТ" : "Талапкер · ЕНТ"}</h2>
         <p className="catalog__lead">
           {lang === "kz"
-            ? "Толық ҰБТ сессиясы: міндетті блоктар + 2 бейіндік пән. Нұсқалар қайталанбайды."
-            : "Полная сессия ЕНТ: обязательные блоки + 2 профильных предмета. Варианты не повторяются."}
+            ? "Бейіндік пәндер жұбын таңдаңыз — толық пробный ҰБТ беріледі."
+            : "Выберите пару профильных предметов — будет выдан полный пробный ЕНТ."}
         </p>
 
         {loading && <p>Загрузка...</p>}
@@ -108,12 +103,13 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                   <li key={m.key} className={m.ready ? "" : "is-missing"}>
                     <strong>{lang === "kz" ? m.label.kz : m.label.ru}</strong>
                     <span>
-                      {m.variantCount}{" "}
-                      {lang === "kz" ? "нұсқа" : "вариант(ов)"}
-                      {!m.ready &&
-                        (lang === "kz"
-                          ? " — тест жоқ"
-                          : " — нет теста")}
+                      {m.ready
+                        ? lang === "kz"
+                          ? "дайын"
+                          : "готово"
+                        : lang === "kz"
+                          ? "тест жоқ"
+                          : "нет теста"}
                     </span>
                   </li>
                 ))}
@@ -122,36 +118,42 @@ export function CatalogPage({ lang }: CatalogPageProps) {
 
             <div className="ent-profile">
               <h3>
-                {lang === "kz"
-                  ? "Бейіндік пәндер (2 таңдаңыз)"
-                  : "Профильные предметы (выберите 2)"}
+                {lang === "kz" ? "Бейіндік пәндер" : "Профильные предметы"}
               </h3>
-              {blueprint.profileSubjects.length === 0 ? (
+              <label className="ent-combo">
+                <span className="ent-combo__label">
+                  {lang === "kz" ? "Комбинацияны таңдаңыз" : "Выберите комбинацию"}
+                </span>
+                <select
+                  className="ent-combo__select"
+                  value={comboId}
+                  onChange={(e) => setComboId(e.target.value)}
+                >
+                  <option value="" disabled>
+                    {lang === "kz" ? "Бейіндік пәндер" : "Профильные предметы"}
+                  </option>
+                  {blueprint.combinations.map((c) => (
+                    <option key={c.id} value={c.id} disabled={!c.ready}>
+                      {lang === "kz" ? c.labelKz : c.labelRu}
+                      {!c.ready
+                        ? lang === "kz"
+                          ? " (тест жоқ)"
+                          : " (нет теста)"
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selected && (
                 <p className="catalog__hint">
-                  {lang === "kz"
-                    ? "Әкімшілікте бейіндік пәндер бойынша тесттер қосыңыз (тарих/сауаттылықтан басқа)."
-                    : "Добавьте в админке тесты по профильным предметам (кроме истории/грамотности)."}
+                  {selected.ready
+                    ? lang === "kz"
+                      ? `Пәндер: ${selected.subject1} + ${selected.subject2}`
+                      : `Предметы: ${selected.subject1} + ${selected.subject2}`
+                    : lang === "kz"
+                      ? "Бұл комбинация үшін админкада тесттер жоқ"
+                      : "Для этой комбинации ещё нет тестов в админке"}
                 </p>
-              ) : (
-                <div className="ent-profile__grid">
-                  {blueprint.profileSubjects.map((p) => {
-                    const on = selected.includes(p.key);
-                    return (
-                      <button
-                        key={p.key}
-                        type="button"
-                        className={`ent-profile__chip ${on ? "active" : ""}`}
-                        onClick={() => toggleProfile(p.key)}
-                      >
-                        {p.subject}
-                        <small>
-                          {p.variantCount}{" "}
-                          {lang === "kz" ? "нұсқа" : "вар."}
-                        </small>
-                      </button>
-                    );
-                  })}
-                </div>
               )}
             </div>
 
@@ -161,7 +163,8 @@ export function CatalogPage({ lang }: CatalogPageProps) {
               disabled={
                 starting ||
                 !blueprint.ready ||
-                selected.length !== blueprint.profileCount
+                !comboId ||
+                !selected?.ready
               }
               onClick={startEnt}
             >

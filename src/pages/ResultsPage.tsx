@@ -93,7 +93,7 @@ export function ResultsPage({ lang }: ResultsPageProps) {
   return (
     <div className="page results-page">
       <header className="site-header">
-        <div className="site-header__logo">PROB</div>
+        <div className="site-header__logo">Талапкер</div>
         <h1>{t("results", lang)}</h1>
       </header>
 

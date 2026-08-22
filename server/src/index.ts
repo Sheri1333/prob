@@ -51,7 +51,7 @@ app.use("/uploads", express.static(UPLOADS_DIR));
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    service: "prob-api",
+    service: "talapker-api",
     db: isDbReady() ? "up" : "down",
   });
 });
@@ -88,7 +88,7 @@ app.use(
 );
 
 const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`PROB API http://0.0.0.0:${PORT}`);
+  console.log(`Талапкер API http://0.0.0.0:${PORT}`);
   console.log(`Uploads ${UPLOADS_DIR}`);
 });
 

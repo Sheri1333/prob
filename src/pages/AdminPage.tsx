@@ -257,7 +257,7 @@ export function AdminPage() {
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
       <aside className="admin-sidebar">
         <Link to="/" className="admin-sidebar__brand">
-          <strong>PROB</strong>
+          <strong>Талапкер</strong>
           <span>Админка</span>
         </Link>
         <nav className="admin-sidebar__nav">

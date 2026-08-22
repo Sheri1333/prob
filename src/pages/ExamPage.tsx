@@ -44,10 +44,10 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const profiles = params.getAll("profile");
+    const combo = params.get("combo");
     const existing = loadExamDraft();
 
-    if (profiles.length !== 2 && existing && existing.sections.length > 0) {
+    if (!combo && existing && existing.sections.length > 0) {
       endsAtRef.current = existing.endsAt;
       setDraft(existing);
       setSecondsLeft(
@@ -57,11 +57,11 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
       return;
     }
 
-    if (profiles.length !== 2) {
+    if (!combo) {
       setLoadError(
         lang === "kz"
-          ? "Алдымен 2 бейіндік пәнді таңдаңыз"
-          : "Сначала выберите 2 профильных предмета",
+          ? "Алдымен бейіндік пәндер комбинациясын таңдаңыз"
+          : "Сначала выберите комбинацию профильных предметов",
       );
       setLoading(false);
       return;
@@ -70,7 +70,7 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     clearExamDraft();
     api
       .startExam({
-        profileSubjects: profiles,
+        comboId: combo,
         excludeTestIds: loadUsedVariants(),
       })
       .then((session) => {

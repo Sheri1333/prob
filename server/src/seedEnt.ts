@@ -188,6 +188,18 @@ const physicsQs = padQuestions(
   "Физика",
 );
 
+const mathQs = padQuestions(
+  [
+    single(1, "log₂ 8 =", ["2", "3", "4", "8"], "B"),
+    single(1, "Производная x²:", ["x", "2x", "2", "x²"], "B"),
+    single(1, "sin 90° =", ["0", "1", "0.5", "−1"], "B"),
+    single(1, "Корни x² − 5x + 6 = 0:", ["2 и 3", "1 и 6", "−2 и −3", "0 и 5"], "A"),
+    single(1, "Площадь круга радиуса r:", ["πr", "2πr", "πr²", "πd"], "C"),
+  ].map((q, idx) => ({ ...q, id: idx + 1 })),
+  40,
+  "Математика",
+);
+
 type SeedSpec = {
   subject: string;
   title: string;
@@ -232,6 +244,13 @@ const SPECS: SeedSpec[] = [
     durationMinutes: 50,
     questions: physicsQs,
   },
+  {
+    subject: "Математика",
+    title: "ЕНТ — Математика (вариант 1)",
+    titleKz: "ҰБТ — Математика (1-нұсқа)",
+    durationMinutes: 50,
+    questions: mathQs,
+  },
 ];
 
 async function upsertBySubject(spec: SeedSpec): Promise<string> {
@@ -271,7 +290,7 @@ async function main() {
       `✓ ${spec.subject}: ${spec.questions.length} Q → ${id}`,
     );
   }
-  console.log("Done. Open the site, pick География + Физика, start ЕНТ.");
+  console.log("Done. Выберите «Математика - Физика» или «Математика - География».");
   await closeDb();
 }
 

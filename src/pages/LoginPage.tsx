@@ -30,7 +30,7 @@ export function LoginPage() {
   return (
     <div className="page page--center auth-page">
       <form className="auth-card" onSubmit={onSubmit}>
-        <h1>Вход в админку</h1>
+        <h1>Талапкер · Вход</h1>
         {error && <p className="auth-card__error">{error}</p>}
         <label>
           Email
@@ -89,7 +89,7 @@ export function RegisterPage() {
   return (
     <div className="page page--center auth-page">
       <form className="auth-card" onSubmit={onSubmit}>
-        <h1>Регистрация</h1>
+        <h1>Талапкер · Регистрация</h1>
         {error && <p className="auth-card__error">{error}</p>}
         <label>
           Имя
