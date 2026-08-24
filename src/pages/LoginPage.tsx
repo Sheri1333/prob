@@ -55,6 +55,9 @@ export function LoginPage() {
         <button type="submit" className="auth-card__btn" disabled={busy}>
           {busy ? "..." : "Войти"}
         </button>
+        <p className="auth-card__footer">
+          Нет аккаунта? <Link to="/register">Создать</Link>
+        </p>
         <Link to="/" className="auth-card__back">
           ← На главную
         </Link>
@@ -126,6 +129,9 @@ export function RegisterPage() {
         <p className="auth-card__footer">
           Уже есть аккаунт? <Link to="/login">Войти</Link>
         </p>
+        <Link to="/" className="auth-card__back">
+          ← На главную
+        </Link>
       </form>
     </div>
   );
