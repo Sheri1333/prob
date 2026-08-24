@@ -4,11 +4,8 @@ import { t } from "../i18n/strings";
 interface TestFooterProps {
   lang: Lang;
   currentIndex: number;
-  totalQuestions: number;
-  answeredIds: Set<number>;
   onPrev: () => void;
   onNext: () => void;
-  onJump: (index: number) => void;
   onOpenMap: () => void;
   isLast: boolean;
   onFinish: () => void;
@@ -18,23 +15,13 @@ interface TestFooterProps {
 export function TestFooter({
   lang,
   currentIndex,
-  totalQuestions,
-  answeredIds,
   onPrev,
   onNext,
-  onJump,
   onOpenMap,
   isLast,
   onFinish,
   finishing,
 }: TestFooterProps) {
-  const windowSize = Math.min(5, totalQuestions);
-  let start = Math.max(0, currentIndex - 2);
-  if (start + windowSize > totalQuestions) {
-    start = Math.max(0, totalQuestions - windowSize);
-  }
-  const dots = Array.from({ length: windowSize }, (_, i) => start + i);
-
   return (
     <nav className="exam-footer">
       <div className="exam-footer__left">
@@ -47,25 +34,6 @@ export function TestFooter({
           <span className="material-symbols-outlined">chevron_left</span>
           {t("prevQuestion", lang)}
         </button>
-      </div>
-
-      <div className="exam-footer__dots">
-        {start > 0 && <span className="exam-footer__ellipsis">...</span>}
-        {dots.map((i) => (
-          <button
-            key={i}
-            type="button"
-            aria-label={`${i + 1}`}
-            aria-current={i === currentIndex ? "step" : undefined}
-            className={`exam-footer__dot ${
-              i === currentIndex ? "exam-footer__dot--current" : ""
-            } ${answeredIds.has(i) ? "exam-footer__dot--done" : ""}`}
-            onClick={() => onJump(i)}
-          />
-        ))}
-        {start + windowSize < totalQuestions && (
-          <span className="exam-footer__ellipsis">...</span>
-        )}
       </div>
 
       <div className="exam-footer__right">

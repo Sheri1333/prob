@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from || "/admin";
+  const from = (location.state as { from?: string } | null)?.from || "/";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,6 +30,9 @@ export function LoginPage() {
 
   return (
     <div className="page page--center auth-page">
+      <div className="auth-page__toggle">
+        <ThemeToggle />
+      </div>
       <form className="auth-card" onSubmit={onSubmit}>
         <h1>Талапкер · Вход</h1>
         {error && <p className="auth-card__error">{error}</p>}
@@ -56,7 +60,10 @@ export function LoginPage() {
           {busy ? "..." : "Войти"}
         </button>
         <p className="auth-card__footer">
-          Нет аккаунта? <Link to="/register">Создать</Link>
+          Нет аккаунта?{" "}
+          <Link to="/register" state={{ from }}>
+            Создать
+          </Link>
         </p>
         <Link to="/" className="auth-card__back">
           ← На главную
@@ -69,6 +76,8 @@ export function LoginPage() {
 export function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from || "/";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -81,7 +90,7 @@ export function RegisterPage() {
     setBusy(true);
     try {
       await register(name, email, password);
-      navigate("/", { replace: true });
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка регистрации");
     } finally {
@@ -91,6 +100,9 @@ export function RegisterPage() {
 
   return (
     <div className="page page--center auth-page">
+      <div className="auth-page__toggle">
+        <ThemeToggle />
+      </div>
       <form className="auth-card" onSubmit={onSubmit}>
         <h1>Талапкер · Регистрация</h1>
         {error && <p className="auth-card__error">{error}</p>}
@@ -127,7 +139,10 @@ export function RegisterPage() {
           {busy ? "..." : "Создать аккаунт"}
         </button>
         <p className="auth-card__footer">
-          Уже есть аккаунт? <Link to="/login">Войти</Link>
+          Уже есть аккаунт?{" "}
+          <Link to="/login" state={{ from }}>
+            Войти
+          </Link>
         </p>
         <Link to="/" className="auth-card__back">
           ← На главную

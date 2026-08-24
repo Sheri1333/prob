@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { ThemeToggle } from "../components/ThemeToggle";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import { loadExamDraft } from "../utils/examDraft";
@@ -39,8 +40,20 @@ export function CatalogPage({ lang }: CatalogPageProps) {
 
   const startEnt = () => {
     if (!blueprint || !comboId || !selected?.ready) return;
+    if (!user) {
+      navigate("/login", { state: { from: `/exam?combo=${comboId}` } });
+      return;
+    }
     setStarting(true);
     navigate(`/exam?combo=${encodeURIComponent(comboId)}`);
+  };
+
+  const resumeExam = () => {
+    if (!user) {
+      navigate("/login", { state: { from: "/exam" } });
+      return;
+    }
+    navigate("/exam");
   };
 
   const resume = loadExamDraft();
@@ -50,13 +63,23 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       <header className="site-header">
         <div className="site-header__logo">Талапкер</div>
         <nav className="site-header__nav">
-          <Link to="/admin">Админка</Link>
-          {isAdmin && user && (
+          <ThemeToggle />
+          {user ? (
             <>
-              <span className="site-header__user">{user.name}</span>
+              {isAdmin && <Link to="/admin">Админка</Link>}
+              <Link to="/profile" className="site-header__user">
+                {user.name}
+              </Link>
               <button type="button" className="link-btn" onClick={logout}>
                 Выйти
               </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login">Кіру</Link>
+              <Link to="/register" className="link-btn">
+                Тіркелу
+              </Link>
             </>
           )}
         </nav>
@@ -70,6 +93,11 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           {lang === "kz"
             ? "Бейіндік пәндер жұбын таңдаңыз — толық пробный ҰБТ беріледі: нақты уақыт, нақты сұрақтар, нақты нәтиже."
             : "Выберите пару профильных предметов — получите полный пробный ЕНТ: настоящий таймер, настоящие вопросы, честный результат."}
+        </p>
+        <p className="hero__about">
+          {lang === "kz"
+            ? "Талапкер — Қазақстан оқушыларына арналған тегін онлайн платформа. Мұнда сіз ұлттық бірыңғай тестілеуді нақты форматта тапсырып көресіз, ал әр әрекеттен кейін балл мен қателерге толық талдау аласыз."
+            : "Талапкер — бесплатная онлайн-платформа для подготовки школьников Казахстана к ЕНТ. Здесь можно пройти экзамен в реальном формате и сразу после попытки получить балл и разбор ошибок."}
         </p>
       </section>
 
@@ -91,7 +119,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
             <button
               type="button"
               className="test-card__cta"
-              onClick={() => navigate("/exam")}
+              onClick={resumeExam}
             >
               {lang === "kz" ? "Жалғастыру" : "Продолжить"}
             </button>
@@ -182,6 +210,122 @@ export function CatalogPage({ lang }: CatalogPageProps) {
             </button>
           </>
         )}
+      </section>
+
+      {blueprint && (
+        <section className="landing-stats">
+          <div className="landing-stat">
+            <strong>{blueprint.durationMinutes}</strong>
+            <span>{lang === "kz" ? "минут" : "минут на весь ЕНТ"}</span>
+          </div>
+          <div className="landing-stat">
+            <strong>{blueprint.mandatory.length}</strong>
+            <span>
+              {lang === "kz" ? "міндетті блок" : "обязательных блока"}
+            </span>
+          </div>
+          <div className="landing-stat">
+            <strong>{blueprint.combinations.length}+</strong>
+            <span>
+              {lang === "kz" ? "бейіндік комбинация" : "профильных комбинаций"}
+            </span>
+          </div>
+          <div className="landing-stat">
+            <strong>3</strong>
+            <span>
+              {lang === "kz" ? "сұрақ форматы" : "формата вопросов"}
+            </span>
+          </div>
+        </section>
+      )}
+
+      <section className="landing-features">
+        <h2 className="landing-section-title">
+          {lang === "kz" ? "Неге Талапкер?" : "Почему Талапкер"}
+        </h2>
+        <div className="landing-features__grid">
+          <article className="landing-feature">
+            <span className="material-symbols-outlined landing-feature__icon">
+              quiz
+            </span>
+            <h3>{lang === "kz" ? "Толық ҰБТ форматы" : "Полный формат ЕНТ"}</h3>
+            <p>
+              {lang === "kz"
+                ? "Міндетті блоктар мен бейіндік пәндер бір сессияда — нақты емтихандағыдай."
+                : "Обязательные блоки и профильные предметы в одной сессии — как на настоящем экзамене."}
+            </p>
+          </article>
+          <article className="landing-feature">
+            <span className="material-symbols-outlined landing-feature__icon">
+              timer
+            </span>
+            <h3>{lang === "kz" ? "Нақты таймер" : "Настоящий таймер"}</h3>
+            <p>
+              {lang === "kz"
+                ? "Уақыт кері санала бастайды, ал пәндер арасында прогресті жоғалтпай ауысасыз."
+                : "Обратный отсчёт по всему тесту и переключение между предметами без потери прогресса."}
+            </p>
+          </article>
+          <article className="landing-feature">
+            <span className="material-symbols-outlined landing-feature__icon">
+              calculate
+            </span>
+            <h3>
+              {lang === "kz" ? "Кірістірілген құралдар" : "Встроенные инструменты"}
+            </h3>
+            <p>
+              {lang === "kz"
+                ? "Калькулятор және толық Менделеев кестесі тест барысында қолжетімді."
+                : "Калькулятор и полная таблица Менделеева прямо во время теста."}
+            </p>
+          </article>
+          <article className="landing-feature">
+            <span className="material-symbols-outlined landing-feature__icon">
+              fact_check
+            </span>
+            <h3>{lang === "kz" ? "Жедел нәтиже" : "Мгновенный результат"}</h3>
+            <p>
+              {lang === "kz"
+                ? "Тестті аяқтаған соң балл мен ҰБТ шкаласы бойынша баға бірден шығады."
+                : "Балл и оценка по шкале ЕНТ — сразу после завершения теста."}
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section className="landing-steps">
+        <h2 className="landing-section-title">
+          {lang === "kz" ? "Қалай жұмыс істейді" : "Как это работает"}
+        </h2>
+        <div className="landing-steps__grid">
+          <article className="landing-step">
+            <span className="landing-step__num">1</span>
+            <h3>{lang === "kz" ? "Пәндерді таңдаңыз" : "Выберите предметы"}</h3>
+            <p>
+              {lang === "kz"
+                ? "Бейіндік пәндер жұбын белгілеңіз — тест автоматты түрде құрылады."
+                : "Отметьте пару профильных предметов — тест соберётся автоматически."}
+            </p>
+          </article>
+          <article className="landing-step">
+            <span className="landing-step__num">2</span>
+            <h3>{lang === "kz" ? "Тестті тапсырыңыз" : "Пройдите тест"}</h3>
+            <p>
+              {lang === "kz"
+                ? "Нақты уақыт режимінде жауап беріңіз, қажет болса пәндер арасында ауысыңыз."
+                : "Отвечайте в реальном времени, при необходимости переключайтесь между блоками."}
+            </p>
+          </article>
+          <article className="landing-step">
+            <span className="landing-step__num">3</span>
+            <h3>{lang === "kz" ? "Нәтижені көріңіз" : "Получите результат"}</h3>
+            <p>
+              {lang === "kz"
+                ? "Балл, дұрыс жауаптар пайызы және ҰБТ шкаласы бойынша баға бірден қолжетімді."
+                : "Балл, процент верных ответов и оценка по шкале ЕНТ — сразу на экране."}
+            </p>
+          </article>
+        </div>
       </section>
     </div>
   );

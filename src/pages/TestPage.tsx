@@ -239,6 +239,8 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
         timerSeconds={secondsLeft}
         onExit={handleExit}
         onToggleLang={onToggleLang}
+        answeredIds={answeredIndexes}
+        onJump={goTo}
       />
 
       <main className="exam-main">
@@ -254,11 +256,8 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
       <TestFooter
         lang={lang}
         currentIndex={currentIndex}
-        totalQuestions={test.questions.length}
-        answeredIds={answeredIndexes}
         onPrev={() => goTo(currentIndex - 1)}
         onNext={() => goTo(currentIndex + 1)}
-        onJump={goTo}
         onOpenMap={() => setMapOpen(true)}
         isLast={currentIndex === test.questions.length - 1}
         onFinish={handleFinish}

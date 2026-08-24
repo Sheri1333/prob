@@ -181,6 +181,20 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     return set;
   }, [answers, section]);
 
+  const sectionSummaries = useMemo(() => {
+    if (!draft) return [];
+    return draft.sections.map((s, i) => {
+      const ans = draft.answersByTest[s.testId] ?? {};
+      const answered = s.questions.filter((q) => isAnswered(ans[q.id])).length;
+      return {
+        subject: s.subject,
+        answered,
+        total: s.questions.length,
+        current: i === draft.sectionIndex,
+      };
+    });
+  }, [draft]);
+
   if (loading) {
     return <div className="page page--center">Загрузка ЕНТ...</div>;
   }
@@ -275,6 +289,12 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
         timerSeconds={secondsLeft}
         onExit={handleExit}
         onToggleLang={onToggleLang}
+        sections={sectionSummaries}
+        onSwitchSection={(i) =>
+          patchDraft((prev) => ({ ...prev, sectionIndex: i }))
+        }
+        answeredIds={answeredIndexes}
+        onJump={goTo}
       />
 
       <main className="exam-main">
@@ -290,11 +310,8 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
       <TestFooter
         lang={lang}
         currentIndex={currentIndex}
-        totalQuestions={section.questions.length}
-        answeredIds={answeredIndexes}
         onPrev={() => goTo(currentIndex - 1)}
         onNext={handleNext}
-        onJump={goTo}
         onOpenMap={() => setMapOpen(true)}
         isLast={isLastQuestion && isLastSection}
         onFinish={handleFinish}
