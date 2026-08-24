@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { translateSubject } from "../i18n/subjects";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import type { ExamSubmitResponse } from "../utils/examDraft";
@@ -29,9 +30,14 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
         <div className="ent-results__crumbs">
           {lang === "kz" ? "ТЕСТІЛЕУ > ТЕСТІЛЕУДІ АЯҚТАУ" : "ТЕСТИРОВАНИЕ > ЗАВЕРШЕНИЕ"}
         </div>
-        <Link to="/" className="ent-results__home">
-          {lang === "kz" ? "Басты бетке" : "На главную"}
-        </Link>
+        <div className="ent-results__actions">
+          <Link to="/profile" className="ent-results__history">
+            {lang === "kz" ? "Тарих" : "История"}
+          </Link>
+          <Link to="/" className="ent-results__home">
+            {lang === "kz" ? "Басты бетке" : "На главную"}
+          </Link>
+        </div>
       </header>
 
       <div className="ent-results__watermark" aria-hidden>
@@ -56,7 +62,11 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
           <tbody>
             {state.sections.map((section, index) => (
               <tr key={section.testId}>
-                <td>{lang === "kz" ? section.titleKz || section.subject : section.title || section.subject}</td>
+                <td>
+                  {lang === "kz"
+                    ? section.titleKz || translateSubject(section.subject, lang)
+                    : section.title || section.subject}
+                </td>
                 <td className="ent-summary-table__score">{section.score}</td>
                 {index === 0 && (
                   <td
@@ -89,11 +99,15 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
           ? section.questionIds
           : Array.from({ length: section.questionCount }, (_, i) => i + 1);
         return (
-          <section key={section.testId} className="ent-detail">
+          <details key={section.testId} className="ent-detail">
+            <summary className="ent-detail__toggle">
+              <span className="material-symbols-outlined">expand_more</span>
+              {lang === "kz" ? "Тапсырмалар бойынша егжей-тегжей" : "Подробности по заданиям"}
+            </summary>
             <div className="ent-detail__meta">
               <div>
                 <span>{lang === "kz" ? "Бөлім" : "Раздел"}</span>
-                <strong>{section.subject}</strong>
+                <strong>{translateSubject(section.subject, lang)}</strong>
               </div>
               <div>
                 <span>{lang === "kz" ? "Жауаптар саны" : "Ответов"}</span>
@@ -152,7 +166,7 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
                 </tbody>
               </table>
             </div>
-          </section>
+          </details>
         );
       })}
 

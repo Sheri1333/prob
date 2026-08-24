@@ -5,6 +5,7 @@ import { ExamTools } from "../components/ExamTools";
 import { QuestionView } from "../components/QuestionView";
 import { TestFooter } from "../components/TestFooter";
 import { TestHeader } from "../components/TestHeader";
+import { translateSubject } from "../i18n/subjects";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import type { AnswerValue } from "../types/test";
@@ -187,13 +188,13 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
       const ans = draft.answersByTest[s.testId] ?? {};
       const answered = s.questions.filter((q) => isAnswered(ans[q.id])).length;
       return {
-        subject: s.subject,
+        subject: translateSubject(s.subject, lang),
         answered,
         total: s.questions.length,
         current: i === draft.sectionIndex,
       };
     });
-  }, [draft]);
+  }, [draft, lang]);
 
   if (loading) {
     return <div className="page page--center">Загрузка ЕНТ...</div>;
@@ -274,10 +275,7 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     }
   };
 
-  const sectionLabel =
-    lang === "kz"
-      ? `${section.subject} · ${draft.sectionIndex + 1}/${draft.sections.length}`
-      : `${section.subject} · ${draft.sectionIndex + 1}/${draft.sections.length}`;
+  const sectionLabel = `${translateSubject(section.subject, lang)} · ${draft.sectionIndex + 1}/${draft.sections.length}`;
 
   return (
     <div className="exam">
@@ -347,7 +345,7 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
                     patchDraft((prev) => ({ ...prev, sectionIndex: i }))
                   }
                 >
-                  {s.subject}
+                  {translateSubject(s.subject, lang)}
                 </button>
               ))}
             </p>

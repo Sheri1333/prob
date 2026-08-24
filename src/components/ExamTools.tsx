@@ -147,7 +147,7 @@ const ACTINIDES: ElementDef[] = [
 
 const ELEMENTS: ElementDef[] = [...MAIN_ELEMENTS, ...LANTHANIDES, ...ACTINIDES];
 
-function CalculatorPanel({ lang }: { lang: Lang }) {
+function CalculatorPanel() {
   const [display, setDisplay] = useState("0");
   const [acc, setAcc] = useState<number | null>(null);
   const [op, setOp] = useState<string | null>(null);
@@ -249,9 +249,6 @@ function CalculatorPanel({ lang }: { lang: Lang }) {
           .
         </button>
       </div>
-      <p className="exam-tool-panel__hint">
-        {lang === "kz" ? "Қарапайым калькулятор" : "Простой калькулятор"}
-      </p>
     </div>
   );
 }
@@ -310,11 +307,6 @@ function MendeleevPanel({ lang }: { lang: Lang }) {
         </div>
         <div className="exam-mendeleev__spacer" style={{ gridRow: 8 }} />
       </div>
-      <p className="exam-tool-panel__hint">
-        {lang === "kz"
-          ? "Толық кесте · 1–118 элементтер"
-          : "Полная таблица · элементы 1–118"}
-      </p>
     </div>
   );
 }
@@ -396,7 +388,7 @@ export function ExamTools({ lang }: ExamToolsProps) {
                 </button>
               </div>
               {open === "calculator" ? (
-                <CalculatorPanel lang={lang} />
+                <CalculatorPanel />
               ) : (
                 <MendeleevPanel lang={lang} />
               )}

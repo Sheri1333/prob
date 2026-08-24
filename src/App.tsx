@@ -26,7 +26,7 @@ export function App() {
             <Route path="/" element={<CatalogPage lang={lang} />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/profile" element={<ProfilePage lang={lang} />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route
               path="/exam"

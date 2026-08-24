@@ -3,11 +3,18 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ThemeToggle } from "../components/ThemeToggle";
 
+interface AuthLocationState {
+  from?: string;
+  notice?: "pricing";
+}
+
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from || "/";
+  const routeState = location.state as AuthLocationState | null;
+  const from = routeState?.from || "/";
+  const notice = routeState?.notice;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,6 +42,13 @@ export function LoginPage() {
       </div>
       <form className="auth-card" onSubmit={onSubmit}>
         <h1>Талапкер · Вход</h1>
+        {notice === "pricing" && (
+          <p className="auth-card__notice">
+            Мы перейдём к тарифу сразу после входа или регистрации. Не забудьте
+            снять лимит на покупки в интернете, если собираетесь оплачивать
+            картой.
+          </p>
+        )}
         {error && <p className="auth-card__error">{error}</p>}
         <label>
           Email
@@ -61,7 +75,7 @@ export function LoginPage() {
         </button>
         <p className="auth-card__footer">
           Нет аккаунта?{" "}
-          <Link to="/register" state={{ from }}>
+          <Link to="/register" state={{ from, notice }}>
             Создать
           </Link>
         </p>
@@ -77,7 +91,9 @@ export function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from || "/";
+  const routeState = location.state as AuthLocationState | null;
+  const from = routeState?.from || "/";
+  const notice = routeState?.notice;
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -105,6 +121,12 @@ export function RegisterPage() {
       </div>
       <form className="auth-card" onSubmit={onSubmit}>
         <h1>Талапкер · Регистрация</h1>
+        {notice === "pricing" && (
+          <p className="auth-card__notice">
+            Мы перейдём к тарифу сразу после регистрации. Не забудьте снять
+            лимит на покупки в интернете, если собираетесь оплачивать картой.
+          </p>
+        )}
         {error && <p className="auth-card__error">{error}</p>}
         <label>
           Имя
@@ -140,7 +162,7 @@ export function RegisterPage() {
         </button>
         <p className="auth-card__footer">
           Уже есть аккаунт?{" "}
-          <Link to="/login" state={{ from }}>
+          <Link to="/login" state={{ from, notice }}>
             Войти
           </Link>
         </p>

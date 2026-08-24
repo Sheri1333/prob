@@ -5,6 +5,7 @@ import { ExamTools } from "../components/ExamTools";
 import { QuestionView } from "../components/QuestionView";
 import { TestFooter } from "../components/TestFooter";
 import { TestHeader } from "../components/TestHeader";
+import { translateSubject } from "../i18n/subjects";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import type { AnswerValue, TestDefinition } from "../types/test";
@@ -232,7 +233,7 @@ export function TestPage({ lang, onToggleLang }: TestPageProps) {
   return (
     <div className="exam">
       <TestHeader
-        section={test.section || test.subject}
+        section={translateSubject(test.section || test.subject, lang)}
         lang={lang}
         current={currentIndex + 1}
         total={test.questions.length}
