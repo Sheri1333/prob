@@ -24,8 +24,6 @@ export function CatalogPage({ lang }: CatalogPageProps) {
   const [blueprint, setBlueprint] = useState<Awaited<
     ReturnType<typeof api.getExamBlueprint>
   > | null>(null);
-  const [comboId, setComboId] = useState("");
-  const [starting, setStarting] = useState(false);
   const [comboModalOpen, setComboModalOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const { toasts, push: toast, dismiss: dismissToast } = useToasts();
@@ -33,26 +31,33 @@ export function CatalogPage({ lang }: CatalogPageProps) {
   useEffect(() => {
     api
       .getExamBlueprint()
-      .then((bp) => {
-        setBlueprint(bp);
-        const firstReady = bp.combinations.find((c) => c.ready);
-        if (firstReady) setComboId(firstReady.id);
-      })
+      .then((bp) => setBlueprint(bp))
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Не удалось загрузить ЕНТ"),
       )
       .finally(() => setLoading(false));
   }, []);
 
-  const selected = blueprint?.combinations.find((c) => c.id === comboId);
-
-  const startEnt = () => {
-    if (!blueprint || !comboId || !selected?.ready) return;
+  const openFreePlan = () => {
     if (!user) {
-      navigate("/login", { state: { from: `/exam?combo=${comboId}` } });
+      navigate("/login", { state: { from: "/", notice: "pricing" } });
       return;
     }
-    setStarting(true);
+    if (!blueprint || !blueprint.ready) {
+      toast(
+        "error",
+        lang === "kz"
+          ? "Әзірге тесттер дайын емес"
+          : "Тесты пока не готовы",
+      );
+      return;
+    }
+    setComboModalOpen(true);
+  };
+
+  const pickCombo = (comboId: string, ready: boolean) => {
+    if (!ready) return;
+    setComboModalOpen(false);
     navigate(`/exam?combo=${encodeURIComponent(comboId)}`);
   };
 
@@ -62,19 +67,6 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       return;
     }
     navigate("/exam");
-  };
-
-  const choosePlan = () => {
-    if (!user) {
-      navigate("/login", { state: { from: "/", notice: "pricing" } });
-      return;
-    }
-    toast(
-      "ok",
-      lang === "kz"
-        ? "Төлем жүйесі жақында қосылады"
-        : "Оплата пока недоступна — скоро подключим",
-    );
   };
 
   const resume = loadExamDraft();
@@ -128,135 +120,25 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         </p>
       </section>
 
-      <section className="impact-stats">
-        <div className="impact-stat">
-          <strong>
-            <AnimatedNumber value={10000} suffix="+" />
-          </strong>
-          <span>{lang === "kz" ? "оқушы" : "учеников"}</span>
-        </div>
-        <div className="impact-stat">
-          <strong>
-            <AnimatedNumber value={500} suffix="+" />
-          </strong>
-          <span>{lang === "kz" ? "тест" : "тестов"}</span>
-        </div>
-        <div className="impact-stat">
-          <strong>
-            <AnimatedNumber value={20000} suffix="+" />
-          </strong>
-          <span>{lang === "kz" ? "сұрақ" : "вопросов"}</span>
-        </div>
-        <div className="impact-stat">
-          <strong>24/7</strong>
-          <span>{lang === "kz" ? "қолжетімділік" : "доступности"}</span>
-        </div>
-      </section>
+      {loading && <p className="page">Загрузка...</p>}
+      {error && (
+        <p className="auth-card__error">
+          {error}. Запустите API: <code>npm run server</code>
+        </p>
+      )}
 
-      <section className="catalog catalog--ent">
-        {loading && <p>Загрузка...</p>}
-        {error && (
-          <p className="auth-card__error">
-            {error}. Запустите API: <code>npm run server</code>
+      {resume && (
+        <div className="ent-resume">
+          <p>
+            {lang === "kz"
+              ? "Аяқталмаған сессия бар"
+              : "Есть незавершённая сессия"}
           </p>
-        )}
-
-        {resume && (
-          <div className="ent-resume">
-            <p>
-              {lang === "kz"
-                ? "Аяқталмаған сессия бар"
-                : "Есть незавершённая сессия"}
-            </p>
-            <button
-              type="button"
-              className="test-card__cta"
-              onClick={resumeExam}
-            >
-              {lang === "kz" ? "Жалғастыру" : "Продолжить"}
-            </button>
-          </div>
-        )}
-
-        {blueprint && (
-          <>
-            <div className="ent-blocks">
-              <h3>{lang === "kz" ? "Міндетті блоктар" : "Обязательные блоки"}</h3>
-              <ul className="ent-blocks__list">
-                {blueprint.mandatory.map((m) => (
-                  <li key={m.key} className={m.ready ? "" : "is-missing"}>
-                    <strong>{lang === "kz" ? m.label.kz : m.label.ru}</strong>
-                    <span>
-                      {m.ready
-                        ? lang === "kz"
-                          ? "дайын"
-                          : "готово"
-                        : lang === "kz"
-                          ? "тест жоқ"
-                          : "нет теста"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="ent-profile">
-              <h3>
-                {lang === "kz" ? "Бейіндік пәндер" : "Профильные предметы"}
-              </h3>
-              <button
-                type="button"
-                className="ent-combo-card"
-                onClick={() => setComboModalOpen(true)}
-              >
-                <div className="ent-combo-card__text">
-                  <strong>
-                    {selected
-                      ? lang === "kz"
-                        ? selected.labelKz
-                        : selected.labelRu
-                      : lang === "kz"
-                        ? "Комбинацияны таңдаңыз"
-                        : "Выберите комбинацию"}
-                  </strong>
-                  {selected && (
-                    <span>
-                      {selected.ready
-                        ? lang === "kz"
-                          ? `Пәндер: ${translateSubject(selected.subject1, lang)} + ${translateSubject(selected.subject2, lang)}`
-                          : `Предметы: ${selected.subject1} + ${selected.subject2}`
-                        : lang === "kz"
-                          ? "Бұл комбинация үшін админкада тесттер жоқ"
-                          : "Для этой комбинации ещё нет тестов в админке"}
-                    </span>
-                  )}
-                </div>
-                <span className="material-symbols-outlined">tune</span>
-              </button>
-            </div>
-
-            <button
-              type="button"
-              className="test-card__cta ent-start"
-              disabled={
-                starting ||
-                !blueprint.ready ||
-                !comboId ||
-                !selected?.ready
-              }
-              onClick={startEnt}
-            >
-              {starting
-                ? "..."
-                : lang === "kz"
-                  ? "ҰБТ бастау"
-                  : "Начать ЕНТ"}
-              {" · "}
-              {blueprint.durationMinutes} {t("minutes", lang)}
-            </button>
-          </>
-        )}
-      </section>
+          <button type="button" className="test-card__cta" onClick={resumeExam}>
+            {lang === "kz" ? "Жалғастыру" : "Продолжить"}
+          </button>
+        </div>
+      )}
 
       {comboModalOpen &&
         blueprint &&
@@ -285,11 +167,8 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                     key={c.id}
                     type="button"
                     disabled={!c.ready}
-                    className={`combo-modal__item ${c.id === comboId ? "active" : ""}`}
-                    onClick={() => {
-                      setComboId(c.id);
-                      setComboModalOpen(false);
-                    }}
+                    className="combo-modal__item"
+                    onClick={() => pickCombo(c.id, c.ready)}
                   >
                     <strong>{lang === "kz" ? c.labelKz : c.labelRu}</strong>
                     <span>
@@ -309,32 +188,126 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           document.body,
         )}
 
-      {blueprint && (
-        <section className="landing-stats">
-          <div className="landing-stat">
-            <strong>{blueprint.durationMinutes}</strong>
-            <span>{lang === "kz" ? "минут" : "минут на весь ЕНТ"}</span>
-          </div>
-          <div className="landing-stat">
-            <strong>{blueprint.mandatory.length}</strong>
-            <span>
-              {lang === "kz" ? "міндетті блок" : "обязательных блока"}
+      <section className="pricing">
+        <h2 className="landing-section-title">
+          {lang === "kz" ? "Тарифтер" : "Тарифы"}
+        </h2>
+        <div className="pricing__grid">
+          <div className="pricing-card">
+            <span className="pricing-card__badge">
+              {lang === "kz" ? "Қазір қолжетімді" : "Доступно сейчас"}
             </span>
+            <h3 className="pricing-card__name">
+              {lang === "kz" ? "Тегін" : "Бесплатный"}
+            </h3>
+            <div className="pricing-card__price">
+              0 ₸<small>{lang === "kz" ? " / әрдайым" : " / навсегда"}</small>
+            </div>
+            <ul className="pricing-card__list">
+              <li className="ok">
+                <span className="material-symbols-outlined">check_circle</span>
+                {lang === "kz" ? "Толық пробный ҰБТ" : "Полный пробный ЕНТ"}
+              </li>
+              <li className="ok">
+                <span className="material-symbols-outlined">check_circle</span>
+                {lang === "kz"
+                  ? "Барлық бейіндік комбинациялар"
+                  : "Все профильные комбинации"}
+              </li>
+              <li className="ok">
+                <span className="material-symbols-outlined">check_circle</span>
+                {lang === "kz"
+                  ? "Жедел нәтиже және талдау"
+                  : "Мгновенный результат и разбор"}
+              </li>
+              <li className="ok">
+                <span className="material-symbols-outlined">check_circle</span>
+                {lang === "kz"
+                  ? "Калькулятор және Менделеев кестесі"
+                  : "Калькулятор и таблица Менделеева"}
+              </li>
+              {blueprint && (
+                <li className="ok">
+                  <span className="material-symbols-outlined">check_circle</span>
+                  {lang === "kz"
+                    ? `Толық сессия — ${blueprint.durationMinutes} ${t("minutes", lang)}`
+                    : `Полная сессия — ${blueprint.durationMinutes} ${t("minutes", lang)}`}
+                </li>
+              )}
+            </ul>
+            <button
+              type="button"
+              className="test-card__cta pricing-card__cta"
+              onClick={openFreePlan}
+            >
+              {lang === "kz" ? "Пайдалану" : "Пользоваться"}
+            </button>
           </div>
-          <div className="landing-stat">
-            <strong>{blueprint.combinations.length}+</strong>
-            <span>
-              {lang === "kz" ? "бейіндік комбинация" : "профильных комбинаций"}
+
+          <div className="pricing-card pricing-card--soon">
+            <span className="pricing-card__badge">
+              {lang === "kz" ? "Жақында" : "Скоро"}
             </span>
+            <h3 className="pricing-card__name">Premium</h3>
+            <div className="pricing-card__price">
+              —
+              <small>
+                {lang === "kz" ? " бағасы белгіленбеген" : " цена не определена"}
+              </small>
+            </div>
+            <ul className="pricing-card__list">
+              <li className="soon">
+                <span className="material-symbols-outlined">schedule</span>
+                {lang === "kz"
+                  ? "Шектеусіз қайталау мүмкіндігі"
+                  : "Безлимитные повторные попытки"}
+              </li>
+              <li className="soon">
+                <span className="material-symbols-outlined">schedule</span>
+                {lang === "kz"
+                  ? "Толық статистика тарихы"
+                  : "Расширенная статистика по истории"}
+              </li>
+              <li className="soon">
+                <span className="material-symbols-outlined">schedule</span>
+                {lang === "kz" ? "PDF есеп жүктеу" : "Экспорт результатов в PDF"}
+              </li>
+            </ul>
+            <button
+              type="button"
+              className="test-card__cta pricing-card__cta"
+              disabled
+            >
+              {lang === "kz" ? "Жақында қолжетімді болады" : "Скоро будет доступно"}
+            </button>
           </div>
-          <div className="landing-stat">
-            <strong>3</strong>
-            <span>
-              {lang === "kz" ? "сұрақ форматы" : "формата вопросов"}
-            </span>
-          </div>
-        </section>
-      )}
+        </div>
+      </section>
+
+      <section className="impact-stats">
+        <div className="impact-stat">
+          <strong>
+            <AnimatedNumber value={10000} suffix="+" />
+          </strong>
+          <span>{lang === "kz" ? "оқушы" : "учеников"}</span>
+        </div>
+        <div className="impact-stat">
+          <strong>
+            <AnimatedNumber value={500} suffix="+" />
+          </strong>
+          <span>{lang === "kz" ? "тест" : "тестов"}</span>
+        </div>
+        <div className="impact-stat">
+          <strong>
+            <AnimatedNumber value={20000} suffix="+" />
+          </strong>
+          <span>{lang === "kz" ? "сұрақ" : "вопросов"}</span>
+        </div>
+        <div className="impact-stat">
+          <strong>24/7</strong>
+          <span>{lang === "kz" ? "қолжетімділік" : "доступности"}</span>
+        </div>
+      </section>
 
       <section className="landing-features">
         <h2 className="landing-section-title">
@@ -463,94 +436,6 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 : "Ваши ответы автоматически сохраняются на устройстве — обновление страницы не сотрёт прогресс."}
             </p>
           </article>
-        </div>
-      </section>
-
-      <section className="pricing">
-        <h2 className="landing-section-title">
-          {lang === "kz" ? "Тарифтер" : "Тарифы"}
-        </h2>
-        <div className="pricing__grid">
-          <div className="pricing-card">
-            <span className="pricing-card__badge">
-              {lang === "kz" ? "Қазір қолжетімді" : "Доступно сейчас"}
-            </span>
-            <h3 className="pricing-card__name">
-              {lang === "kz" ? "Тегін" : "Бесплатный"}
-            </h3>
-            <div className="pricing-card__price">
-              0 ₸<small>{lang === "kz" ? " / әрдайым" : " / навсегда"}</small>
-            </div>
-            <ul className="pricing-card__list">
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz" ? "Толық пробный ҰБТ" : "Полный пробный ЕНТ"}
-              </li>
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz"
-                  ? "Барлық бейіндік комбинациялар"
-                  : "Все профильные комбинации"}
-              </li>
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz"
-                  ? "Жедел нәтиже және талдау"
-                  : "Мгновенный результат и разбор"}
-              </li>
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz"
-                  ? "Калькулятор және Менделеев кестесі"
-                  : "Калькулятор и таблица Менделеева"}
-              </li>
-            </ul>
-            <button
-              type="button"
-              className="test-card__cta pricing-card__cta"
-              onClick={choosePlan}
-            >
-              {lang === "kz" ? "Пайдалану" : "Пользоваться"}
-            </button>
-          </div>
-
-          <div className="pricing-card pricing-card--soon">
-            <span className="pricing-card__badge">
-              {lang === "kz" ? "Жақында" : "Скоро"}
-            </span>
-            <h3 className="pricing-card__name">Premium</h3>
-            <div className="pricing-card__price">
-              —
-              <small>
-                {lang === "kz" ? " бағасы белгіленбеген" : " цена не определена"}
-              </small>
-            </div>
-            <ul className="pricing-card__list">
-              <li className="soon">
-                <span className="material-symbols-outlined">schedule</span>
-                {lang === "kz"
-                  ? "Шектеусіз қайталау мүмкіндігі"
-                  : "Безлимитные повторные попытки"}
-              </li>
-              <li className="soon">
-                <span className="material-symbols-outlined">schedule</span>
-                {lang === "kz"
-                  ? "Толық статистика тарихы"
-                  : "Расширенная статистика по истории"}
-              </li>
-              <li className="soon">
-                <span className="material-symbols-outlined">schedule</span>
-                {lang === "kz" ? "PDF есеп жүктеу" : "Экспорт результатов в PDF"}
-              </li>
-            </ul>
-            <button
-              type="button"
-              className="test-card__cta pricing-card__cta"
-              disabled
-            >
-              {lang === "kz" ? "Жақында қолжетімді болады" : "Скоро будет доступно"}
-            </button>
-          </div>
         </div>
       </section>
 

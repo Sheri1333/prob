@@ -1445,7 +1445,7 @@ span.landing-feature__icon {
   background: var(--blue-light);
 }
 
-.header-btn--primary {
+.site-header__nav a.header-btn--primary {
   background: linear-gradient(135deg, var(--blue-dark), var(--blue));
   color: #fff;
   box-shadow: 0 6px 16px rgba(84, 102, 245, 0.28);
