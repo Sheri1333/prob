@@ -380,13 +380,69 @@ export function toTestQuestions(parsed: ParsedQuestion[]): Question[] {
 
 function lettersInText(text: string): string[] {
   const found: string[] = [];
-  const re = /(?:^|\s)([A-Fa-fА-Фа-ф])\)/g;
+  // Allow "B )" (space before paren) — common in these exam PDFs.
+  const re = /(?:^|\s)([A-Fa-fА-Фа-ф])\s*\)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
     const letter = normalizeLetter(m[1]);
     if (!found.includes(letter)) found.push(letter);
   }
   return found;
+}
+
+function optionBodyFromHit(text: string): string {
+  return text
+    .replace(/^[A-Fa-fА-Фа-ф]\s*\)\s*/u, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * True when the highlight text is clearly naming one of this question's
+ * options (letter + label), not merely sharing a letter id with another
+ * question on the page.
+ */
+function hitMatchesQuestionOption(
+  hitText: string,
+  question: ParsedQuestion,
+): boolean {
+  const letters = lettersInText(hitText);
+  const body = optionBodyFromHit(hitText);
+  if (!body) return false;
+  return question.options.some((o) => {
+    if (letters.length > 0 && !letters.includes(o.id)) return false;
+    const label = o.label.trim().toLowerCase();
+    if (!label) return false;
+    if (label === body) return true;
+    if (label.length >= 3 && body.includes(label.slice(0, 40))) return true;
+    if (body.length >= 1 && label === body) return true;
+    // Short map-letter labels: "А", "F", "M"
+    if (label.length <= 2 && body === label) return true;
+    return false;
+  });
+}
+
+function lettersFromHitForQuestion(
+  hitText: string,
+  question: ParsedQuestion,
+): string[] {
+  let letters = lettersInText(hitText).filter((id) =>
+    question.options.some((o) => o.id === id),
+  );
+  if (letters.length === 0) {
+    const t = hitText.toLowerCase();
+    letters = question.options
+      .filter(
+        (o) =>
+          o.label.trim().length >= 1 &&
+          (o.label.trim().length < 3
+            ? optionBodyFromHit(hitText) === o.label.trim().toLowerCase()
+            : t.includes(o.label.toLowerCase().slice(0, 40))),
+      )
+      .map((o) => o.id);
+  }
+  return letters;
 }
 
 function rowsInText(text: string): string[] {
@@ -504,6 +560,56 @@ function nearestQuestionId(
   return lowest?.id ?? null;
 }
 
+/**
+ * Prefer a question whose option labels match the highlight text when
+ * geometry alone would assign the mark to a neighbor (common when a later
+ * question's options float into another column at the top of a page).
+ */
+function resolveHitQuestionId(
+  hit: { page: number; x: number; y: number; text: string },
+  extract: HighlightExtract,
+  questions: ParsedQuestion[],
+  knownIds: Set<number>,
+  matchingIds: Set<number>,
+): number | null {
+  const geometric = nearestQuestionId(
+    hit.page,
+    hit.x,
+    hit.y,
+    extract,
+    knownIds,
+    matchingIds,
+  );
+
+  const labelMatches = questions.filter(
+    (q) =>
+      (q.type === "single_choice" || q.type === "multiple_choice") &&
+      hitMatchesQuestionOption(hit.text, q),
+  );
+
+  if (labelMatches.length === 1) return labelMatches[0].id;
+  if (labelMatches.length > 1) {
+    if (geometric && labelMatches.some((q) => q.id === geometric)) {
+      return geometric;
+    }
+    // Prefer a question on the same page whose marker is below the hit
+    // (options rendered above the stem in a neighboring column).
+    const below = labelMatches
+      .map((q) => {
+        const marker = extract.markers.find(
+          (m) => m.page === hit.page && m.id === q.id,
+        );
+        return marker ? { id: q.id, y: marker.y } : null;
+      })
+      .filter((m): m is { id: number; y: number } => !!m && m.y < hit.y)
+      .sort((a, b) => b.y - a.y);
+    if (below[0]) return below[0].id;
+    return labelMatches[0].id;
+  }
+
+  return geometric;
+}
+
 function applyYellowAnswerKeys(
   questions: ParsedQuestion[],
   extract: HighlightExtract,
@@ -524,7 +630,7 @@ function applyYellowAnswerKeys(
 
   for (const hit of extract.hits) {
     const qid =
-      nearestQuestionId(hit.page, hit.x, hit.y, extract, knownIds, matchingIds) ??
+      resolveHitQuestionId(hit, extract, questions, knownIds, matchingIds) ??
       [...hit.text.matchAll(/(\d+)\./g)]
         .map((m) => Number(m[1]))
         .reverse()
@@ -534,19 +640,7 @@ function applyYellowAnswerKeys(
     const question = byId.get(qid);
     if (!question) continue;
 
-    let letters = lettersInText(hit.text).filter((id) =>
-      question.options.some((o) => o.id === id),
-    );
-    if (letters.length === 0) {
-      const t = hit.text.toLowerCase();
-      letters = question.options
-        .filter(
-          (o) =>
-            o.label.trim().length >= 3 &&
-            t.includes(o.label.toLowerCase().slice(0, 40)),
-        )
-        .map((o) => o.id);
-    }
+    const letters = lettersFromHitForQuestion(hit.text, question);
     const rows = rowsInText(hit.text).filter((id) =>
       (question.rows ?? []).some((r) => r.id === id),
     );
@@ -616,6 +710,10 @@ function applyYellowAnswerKeys(
     };
   }
 
+  // Red/green text coloring is the primary key for matching questions in
+  // marked-up ENT PDFs (yellow highlighter is rarely used there).
+  applyColoredMatchingKeys(questions, extract);
+
   return questions.filter((q) => {
     if (q.type === "single_choice") return Boolean(q.detectedAnswer);
     if (q.type === "multiple_choice") {
@@ -623,6 +721,115 @@ function applyYellowAnswerKeys(
     }
     return Object.keys(q.detectedMatch ?? {}).length > 0;
   }).length;
+}
+
+/**
+ * Pair matching rows↔options that share the same ink color (red / green).
+ */
+function applyColoredMatchingKeys(
+  questions: ParsedQuestion[],
+  extract: HighlightExtract,
+): void {
+  const matching = questions.filter((q) => q.type === "matching");
+  if (matching.length === 0 || extract.coloredText.length === 0) return;
+
+  const knownIds = new Set(questions.map((q) => q.id));
+  const matchingIds = new Set(matching.map((q) => q.id));
+  const byId = new Map(questions.map((q) => [q.id, q]));
+
+  type ColorBuf = {
+    rows: Map<"red" | "green", Set<string>>;
+    options: Map<"red" | "green", Set<string>>;
+  };
+  const buf = new Map<number, ColorBuf>();
+
+  for (const hit of extract.coloredText) {
+    const qid = nearestQuestionId(
+      hit.page,
+      hit.x,
+      hit.y,
+      extract,
+      matchingIds,
+      matchingIds,
+    );
+    // Fall back: any known matching id mentioned in text, else nearest
+    // among all known ids then keep only if matching.
+    let resolved = qid;
+    if (resolved === null || !matchingIds.has(resolved)) {
+      const geo = nearestQuestionId(
+        hit.page,
+        hit.x,
+        hit.y,
+        extract,
+        knownIds,
+        matchingIds,
+      );
+      resolved = geo && matchingIds.has(geo) ? geo : null;
+    }
+    if (resolved === null) continue;
+    const question = byId.get(resolved);
+    if (!question || question.type !== "matching") continue;
+
+    const entry =
+      buf.get(resolved) ??
+      ({
+        rows: new Map([
+          ["red", new Set<string>()],
+          ["green", new Set<string>()],
+        ]),
+        options: new Map([
+          ["red", new Set<string>()],
+          ["green", new Set<string>()],
+        ]),
+      } satisfies ColorBuf);
+    buf.set(resolved, entry);
+
+    const rows = rowsInText(hit.text).filter((id) =>
+      (question.rows ?? []).some((r) => r.id === id),
+    );
+    const letters = lettersInText(hit.text).filter((id) =>
+      question.options.some((o) => o.id === id),
+    );
+    // Also match by option label when the letter glyph is a separate run.
+    if (letters.length === 0) {
+      const t = hit.text.toLowerCase();
+      for (const o of question.options) {
+        const label = o.label.trim().toLowerCase();
+        if (label.length >= 3 && t.includes(label.slice(0, 40))) {
+          letters.push(o.id);
+        }
+      }
+    }
+    // Row label match (e.g. colored "Төменгі қысым" without the "2.")
+    if (rows.length === 0) {
+      const t = hit.text.toLowerCase();
+      for (const r of question.rows ?? []) {
+        const label = r.label.trim().toLowerCase();
+        if (label.length >= 3 && t.includes(label.slice(0, 40))) {
+          rows.push(r.id);
+        }
+      }
+    }
+
+    for (const rowId of rows) entry.rows.get(hit.color)!.add(rowId);
+    for (const optionId of letters) entry.options.get(hit.color)!.add(optionId);
+  }
+
+  for (const [qid, entry] of buf) {
+    const question = byId.get(qid);
+    if (!question || question.type !== "matching") continue;
+    const match: Record<string, string> = { ...(question.detectedMatch ?? {}) };
+    for (const color of ["red", "green"] as const) {
+      const rows = [...entry.rows.get(color)!];
+      const options = [...entry.options.get(color)!];
+      if (rows.length === 1 && options.length === 1) {
+        match[rows[0]] = options[0];
+      }
+    }
+    if (Object.keys(match).length > 0) {
+      question.detectedMatch = match;
+    }
+  }
 }
 
 export async function parsePdfBuffer(buffer: Buffer): Promise<ParsePdfResult> {
@@ -671,13 +878,14 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ParsePdfResult> {
       const extract = await extractYellowHighlights(buffer);
       const keyed = applyYellowAnswerKeys(result.questions, extract);
       result.keysFromHighlight = keyed;
+      const colored = extract.coloredText.length;
       result.steps.push({
         step: 6,
         name: "Жёлтые ключи",
         detail:
-          extract.hits.length === 0
-            ? "жёлтых пометок не найдено"
-            : `пометок ${extract.hits.length}, ключей проставлено: ${keyed}`,
+          extract.hits.length === 0 && colored === 0
+            ? "жёлтых/цветных пометок не найдено"
+            : `пометок ${extract.hits.length}, цветных ${colored}, ключей проставлено: ${keyed}`,
       });
     } catch (err) {
       console.warn("Yellow highlight parse failed", err);

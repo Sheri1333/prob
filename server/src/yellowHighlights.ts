@@ -14,9 +14,19 @@ export interface QuestionMarker {
   id: number;
 }
 
+/** Matching keys in ENT PDFs are often red/green *text*, not yellow fills. */
+export interface ColoredTextHit {
+  page: number;
+  x: number;
+  y: number;
+  text: string;
+  color: "red" | "green";
+}
+
 export interface HighlightExtract {
   hits: HighlightHit[];
   markers: QuestionMarker[];
+  coloredText: ColoredTextHit[];
 }
 
 interface Rgb {
@@ -110,6 +120,63 @@ function isYellowPixel(r: number, g: number, b: number, a: number): boolean {
   return r >= 180 && g >= 160 && b <= 170 && (r + g) / 2 - b >= 40;
 }
 
+function isRedTextPixel(r: number, g: number, b: number, a: number): boolean {
+  if (a < 100) return false;
+  return r >= 150 && r - g >= 40 && r - b >= 40 && g < 160 && b < 160;
+}
+
+function isGreenTextPixel(r: number, g: number, b: number, a: number): boolean {
+  if (a < 100) return false;
+  return g >= 100 && g - r >= 25 && g - b >= 15 && r < 160;
+}
+
+type RasterPage = {
+  data: Uint8ClampedArray;
+  width: number;
+  height: number;
+  view: number[];
+};
+
+/**
+ * Sample glyph pixels along a text run and classify red/green answer ink.
+ * Matching questions in marked-up ENT PDFs color row 1 + its option red,
+ * and row 2 + its option green (instead of yellow highlighter).
+ */
+function sampleRunColor(
+  raster: RasterPage,
+  run: TextRun,
+): "red" | "green" | null {
+  const { data, width, height, view } = raster;
+  const cx0 = ((run.x0 - view[0]) / (view[2] - view[0])) * width;
+  const cx1 = ((run.x1 - view[0]) / (view[2] - view[0])) * width;
+  const cyBaseline =
+    ((view[3] - run.y0) / (view[3] - view[1])) * height;
+  const glyphH = Math.max(4, ((run.y1 - run.y0) / (view[3] - view[1])) * height);
+  const ySample = Math.round(cyBaseline - glyphH * 0.35);
+
+  let red = 0;
+  let green = 0;
+  let n = 0;
+  const xStart = Math.max(0, Math.round(cx0));
+  const xEnd = Math.min(width - 1, Math.round(cx1));
+  if (ySample < 0 || ySample >= height || xEnd < xStart) return null;
+
+  for (let sx = xStart; sx <= xEnd; sx += 2) {
+    const i = (ySample * width + sx) * 4;
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const a = data[i + 3];
+    n += 1;
+    if (isRedTextPixel(r, g, b, a)) red += 1;
+    else if (isGreenTextPixel(r, g, b, a)) green += 1;
+  }
+  if (n === 0) return null;
+  if (red > n * 0.12 && red >= green) return "red";
+  if (green > n * 0.12 && green > red) return "green";
+  return null;
+}
+
 function findYellowPixelRects(
   data: Uint8ClampedArray | Buffer,
   width: number,
@@ -185,7 +252,7 @@ function canvasRectToPdf(
   };
 }
 
-async function yellowRectsFromRaster(
+async function renderPageRaster(
   page: {
     getViewport: (opts: { scale: number }) => { width: number; height: number };
     render: (params: Record<string, unknown>) => { promise: Promise<void> };
@@ -207,7 +274,7 @@ async function yellowRectsFromRaster(
       };
     };
   },
-): Promise<Rect[]> {
+): Promise<RasterPage | null> {
   try {
     const scale = 1.4;
     const viewport = page.getViewport({ scale });
@@ -220,11 +287,26 @@ async function yellowRectsFromRaster(
       viewport,
     }).promise;
     const image = canvasAndContext.context.getImageData(0, 0, width, height);
-    const pixelRects = findYellowPixelRects(image.data, width, height);
-    return pixelRects.map((r) => canvasRectToPdf(r, width, height, page.view));
+    return {
+      data: image.data,
+      width,
+      height,
+      view: page.view,
+    };
   } catch {
-    return [];
+    return null;
   }
+}
+
+function yellowRectsFromRasterData(raster: RasterPage): Rect[] {
+  const pixelRects = findYellowPixelRects(
+    raster.data,
+    raster.width,
+    raster.height,
+  );
+  return pixelRects.map((r) =>
+    canvasRectToPdf(r, raster.width, raster.height, raster.view),
+  );
 }
 
 function textInRects(runs: TextRun[], rects: Rect[]): string {
@@ -344,7 +426,8 @@ function yellowRectsFromOps(opList: {
 }
 
 /**
- * Collect text that sits on yellow highlight marks (Word fill or PDF highlighter).
+ * Collect text that sits on yellow highlight marks (Word fill or PDF highlighter),
+ * plus red/green colored answer text used for matching questions.
  */
 export async function extractYellowHighlights(
   buffer: Buffer,
@@ -357,6 +440,7 @@ export async function extractYellowHighlights(
   const doc = await loading.promise;
   const hits: HighlightHit[] = [];
   const markers: QuestionMarker[] = [];
+  const coloredText: ColoredTextHit[] = [];
 
   try {
     for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
@@ -430,13 +514,30 @@ export async function extractYellowHighlights(
           };
         }
       ).canvasFactory;
+
+      let raster: RasterPage | null = null;
       if (canvasFactory) {
-        rects.push(
-          ...(await yellowRectsFromRaster(
-            page as unknown as Parameters<typeof yellowRectsFromRaster>[0],
-            canvasFactory,
-          )),
+        raster = await renderPageRaster(
+          page as unknown as Parameters<typeof renderPageRaster>[0],
+          canvasFactory,
         );
+        if (raster) {
+          rects.push(...yellowRectsFromRasterData(raster));
+          for (const run of runs) {
+            if (!run.str.trim()) continue;
+            // Skip tiny punctuation-only runs unless they look like "2."
+            if (run.str.trim().length < 2 && !/\d/.test(run.str)) continue;
+            const color = sampleRunColor(raster, run);
+            if (!color) continue;
+            coloredText.push({
+              page: pageNum,
+              x: (run.x0 + run.x1) / 2,
+              y: run.y0,
+              text: run.str.trim(),
+              color,
+            });
+          }
+        }
       }
 
       for (const rect of rects) {
@@ -454,5 +555,5 @@ export async function extractYellowHighlights(
     await doc.destroy();
   }
 
-  return { hits, markers };
+  return { hits, markers, coloredText };
 }
