@@ -38,6 +38,23 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    const els = document.querySelectorAll<HTMLElement>(".reveal");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        }
+      },
+      { threshold: 0.15 },
+    );
+    els.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
   const openFreePlan = () => {
     if (!user) {
       navigate("/login", { state: { from: "/", notice: "pricing" } });
@@ -193,7 +210,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           {lang === "kz" ? "Тарифтер" : "Тарифы"}
         </h2>
         <div className="pricing__grid">
-          <div className="pricing-card">
+          <div className="pricing-card reveal">
             <span className="pricing-card__badge">
               {lang === "kz" ? "Қазір қолжетімді" : "Доступно сейчас"}
             </span>
@@ -244,7 +261,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
             </button>
           </div>
 
-          <div className="pricing-card pricing-card--soon">
+          <div className="pricing-card pricing-card--soon reveal">
             <span className="pricing-card__badge">
               {lang === "kz" ? "Жақында" : "Скоро"}
             </span>
@@ -284,26 +301,26 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         </div>
       </section>
 
-      <section className="impact-stats">
-        <div className="impact-stat">
+      <section className="landing-stats">
+        <div className="landing-stat reveal">
           <strong>
             <AnimatedNumber value={10000} suffix="+" />
           </strong>
           <span>{lang === "kz" ? "оқушы" : "учеников"}</span>
         </div>
-        <div className="impact-stat">
+        <div className="landing-stat reveal">
           <strong>
             <AnimatedNumber value={500} suffix="+" />
           </strong>
           <span>{lang === "kz" ? "тест" : "тестов"}</span>
         </div>
-        <div className="impact-stat">
+        <div className="landing-stat reveal">
           <strong>
             <AnimatedNumber value={20000} suffix="+" />
           </strong>
           <span>{lang === "kz" ? "сұрақ" : "вопросов"}</span>
         </div>
-        <div className="impact-stat">
+        <div className="landing-stat reveal">
           <strong>24/7</strong>
           <span>{lang === "kz" ? "қолжетімділік" : "доступности"}</span>
         </div>
@@ -314,7 +331,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           {lang === "kz" ? "Неге Талапкер?" : "Почему Талапкер"}
         </h2>
         <div className="landing-features__grid">
-          <article className="landing-feature">
+          <article className="landing-feature reveal">
             <span className="material-symbols-outlined landing-feature__icon">
               quiz
             </span>
@@ -325,7 +342,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 : "Обязательные блоки и профильные предметы в одной сессии — как на настоящем экзамене."}
             </p>
           </article>
-          <article className="landing-feature">
+          <article className="landing-feature reveal">
             <span className="material-symbols-outlined landing-feature__icon">
               timer
             </span>
@@ -336,7 +353,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 : "Обратный отсчёт по всему тесту и переключение между предметами без потери прогресса."}
             </p>
           </article>
-          <article className="landing-feature">
+          <article className="landing-feature reveal">
             <span className="material-symbols-outlined landing-feature__icon">
               calculate
             </span>
@@ -349,7 +366,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 : "Калькулятор и полная таблица Менделеева прямо во время теста."}
             </p>
           </article>
-          <article className="landing-feature">
+          <article className="landing-feature reveal">
             <span className="material-symbols-outlined landing-feature__icon">
               fact_check
             </span>
@@ -363,13 +380,15 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         </div>
       </section>
 
-      <section className="landing-steps">
+      <section className="landing-features">
         <h2 className="landing-section-title">
-          {lang === "kz" ? "Қалай жұмыс істейді" : "Как это работает"}
+          {lang === "kz" ? "Тағы неге ыңғайлы" : "Ещё несколько причин"}
         </h2>
-        <div className="landing-steps__grid">
-          <article className="landing-step">
-            <span className="landing-step__num">1</span>
+        <div className="landing-features__grid landing-features__grid--wide">
+          <article className="landing-feature reveal">
+            <span className="material-symbols-outlined landing-feature__icon">
+              checklist
+            </span>
             <h3>{lang === "kz" ? "Пәндерді таңдаңыз" : "Выберите предметы"}</h3>
             <p>
               {lang === "kz"
@@ -377,8 +396,10 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 : "Отметьте пару профильных предметов — тест соберётся автоматически."}
             </p>
           </article>
-          <article className="landing-step">
-            <span className="landing-step__num">2</span>
+          <article className="landing-feature reveal">
+            <span className="material-symbols-outlined landing-feature__icon">
+              play_circle
+            </span>
             <h3>{lang === "kz" ? "Тестті тапсырыңыз" : "Пройдите тест"}</h3>
             <p>
               {lang === "kz"
@@ -386,8 +407,10 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 : "Отвечайте в реальном времени, при необходимости переключайтесь между блоками."}
             </p>
           </article>
-          <article className="landing-step">
-            <span className="landing-step__num">3</span>
+          <article className="landing-feature reveal">
+            <span className="material-symbols-outlined landing-feature__icon">
+              leaderboard
+            </span>
             <h3>{lang === "kz" ? "Нәтижені көріңіз" : "Получите результат"}</h3>
             <p>
               {lang === "kz"
@@ -395,15 +418,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 : "Балл, процент верных ответов и оценка по шкале ЕНТ — сразу на экране."}
             </p>
           </article>
-        </div>
-      </section>
-
-      <section className="landing-features">
-        <h2 className="landing-section-title">
-          {lang === "kz" ? "Тағы неге ыңғайлы" : "Ещё несколько причин"}
-        </h2>
-        <div className="landing-features__grid">
-          <article className="landing-feature">
+          <article className="landing-feature reveal">
             <span className="material-symbols-outlined landing-feature__icon">
               laptop_mac
             </span>
@@ -414,7 +429,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 : "Ничего не нужно устанавливать — открывайте сайт с любого устройства и начинайте готовиться."}
             </p>
           </article>
-          <article className="landing-feature">
+          <article className="landing-feature reveal">
             <span className="material-symbols-outlined landing-feature__icon">
               block
             </span>
@@ -425,7 +440,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 : "Никаких баннеров и всплывающих окон — только чистое пространство для подготовки."}
             </p>
           </article>
-          <article className="landing-feature">
+          <article className="landing-feature reveal">
             <span className="material-symbols-outlined landing-feature__icon">
               cloud_done
             </span>
