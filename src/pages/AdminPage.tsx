@@ -3,6 +3,7 @@ import { Link, Navigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ToastHost, useToasts } from "../components/Toast";
 import type { Question, QuestionType, TestDefinition } from "../types/test";
 import {
@@ -51,6 +52,7 @@ export function AdminPage() {
   const [previewMeta, setPreviewMeta] = useState(EMPTY_META);
   const [openPreviewId, setOpenPreviewId] = useState<number | null>(1);
   const [addType, setAddType] = useState<QuestionType>("single_choice");
+  const [removeIndex, setRemoveIndex] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -255,6 +257,20 @@ export function AdminPage() {
   return (
     <div className="admin-page">
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
+      {removeIndex !== null && (
+        <ConfirmDialog
+          title="Удалить вопрос"
+          message={`Удалить вопрос №${draftQuestions[removeIndex]?.id ?? ""}? Это действие нельзя отменить.`}
+          confirmLabel="Удалить"
+          cancelLabel="Отмена"
+          danger
+          onCancel={() => setRemoveIndex(null)}
+          onConfirm={() => {
+            removeQuestion(removeIndex);
+            setRemoveIndex(null);
+          }}
+        />
+      )}
       <aside className="admin-sidebar">
         <Link to="/" className="admin-sidebar__brand">
           <strong>Талапкер</strong>
@@ -650,7 +666,7 @@ export function AdminPage() {
                   onChange={setDraftQuestions}
                   openId={openPreviewId}
                   onOpen={setOpenPreviewId}
-                  onRemove={removeQuestion}
+                  onRemove={setRemoveIndex}
                   onUploadImage={async (file) => {
                     try {
                       const { url } = await api.adminUploadImage(

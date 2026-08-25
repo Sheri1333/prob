@@ -359,7 +359,9 @@ export async function extractYellowHighlights(
       const page = await doc.getPage(pageNum);
       const textContent = await page.getTextContent();
       const runs: TextRun[] = [];
-      for (const item of textContent.items) {
+      const items = textContent.items;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
         if (!("str" in item) || !item.str) continue;
         const tm = item.transform;
         const x = tm[4];
@@ -367,14 +369,32 @@ export async function extractYellowHighlights(
         const w = item.width ?? 0;
         const h = item.height || Math.abs(tm[3]) || 10;
         runs.push({ str: item.str, x0: x, y0: y, x1: x + w, y1: y + h });
+
+        let id: number | null = null;
         const num = item.str.match(/(\d{1,2})\s*\./);
         if (num) {
-          markers.push({
-            page: pageNum,
-            x,
-            y,
-            id: Number(num[1]),
-          });
+          id = Number(num[1]);
+        } else {
+          // pdf.js sometimes splits "21." into separate "21" and "."
+          // runs at a font/kerning boundary — treat an adjacent pair on
+          // the same line as one marker.
+          const bare = item.str.match(/^\s*(\d{1,2})\s*$/);
+          const next = items[i + 1];
+          if (
+            bare &&
+            next &&
+            "str" in next &&
+            typeof next.str === "string" &&
+            /^\s*\./.test(next.str)
+          ) {
+            const ntm = next.transform;
+            const sameLine = Math.abs(ntm[5] - y) < 3;
+            const closeX = ntm[4] - (x + w) < 20 && ntm[4] >= x - 1;
+            if (sameLine && closeX) id = Number(bare[1]);
+          }
+        }
+        if (id !== null) {
+          markers.push({ page: pageNum, x, y, id });
         }
       }
 
