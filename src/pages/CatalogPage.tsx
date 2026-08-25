@@ -122,15 +122,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       </header>
 
       <section className="hero">
-        <h1>
-          {lang === "kz" ? "Ұлттық бірыңғай тестілеуге дайында" : "Готовься к ЕНТ по-настоящему"}
-        </h1>
         <p>
-          {lang === "kz"
-            ? "Бейіндік пәндер жұбын таңдаңыз — толық пробный ҰБТ беріледі: нақты уақыт, нақты сұрақтар, нақты нәтиже."
-            : "Выберите пару профильных предметов — получите полный пробный ЕНТ: настоящий таймер, настоящие вопросы, честный результат."}
-        </p>
-        <p className="hero__about">
           {lang === "kz"
             ? "Талапкер — Қазақстан оқушыларына арналған тегін онлайн платформа. Мұнда сіз ұлттық бірыңғай тестілеуді нақты форматта тапсырып көресіз, ал әр әрекеттен кейін балл мен қателерге толық талдау аласыз."
             : "Талапкер — бесплатная онлайн-платформа для подготовки школьников Казахстана к ЕНТ. Здесь можно пройти экзамен в реальном формате и сразу после попытки получить балл и разбор ошибок."}
@@ -206,9 +198,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         )}
 
       <section className="pricing">
-        <h2 className="landing-section-title">
-          {lang === "kz" ? "Тарифтер" : "Тарифы"}
-        </h2>
+        <h2 className="landing-section-title">Прайс</h2>
         <div className="pricing__grid">
           <div className="pricing-card reveal">
             <span className="pricing-card__badge">
@@ -217,9 +207,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
             <h3 className="pricing-card__name">
               {lang === "kz" ? "Тегін" : "Бесплатный"}
             </h3>
-            <div className="pricing-card__price">
-              0 ₸<small>{lang === "kz" ? " / әрдайым" : " / навсегда"}</small>
-            </div>
+            <div className="pricing-card__price">0 ₸</div>
             <ul className="pricing-card__list">
               <li className="ok">
                 <span className="material-symbols-outlined">check_circle</span>
@@ -382,7 +370,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
 
       <section className="landing-features">
         <h2 className="landing-section-title">
-          {lang === "kz" ? "Тағы неге ыңғайлы" : "Ещё несколько причин"}
+          {lang === "kz" ? "Қалай жұмыс істейді" : "Как это работает"}
         </h2>
         <div className="landing-features__grid landing-features__grid--wide">
           <article className="landing-feature reveal">
