@@ -399,26 +399,34 @@ function optionBodyFromHit(text: string): string {
 }
 
 /**
- * True when the highlight text is clearly naming one of this question's
- * options (letter + label), not merely sharing a letter id with another
- * question on the page.
+ * Map-point questions (options are single letters like A/D/F on a figure).
+ * Yellow marks on these are easy to misread — better leave blank for manual.
+ */
+function isMapLetterQuestion(question: ParsedQuestion): boolean {
+  if (question.options.length < 2) return false;
+  const short = question.options.filter((o) => o.label.trim().length <= 2);
+  return short.length >= Math.ceil(question.options.length * 0.75);
+}
+
+/**
+ * True when the highlight text clearly names one of this question's options
+ * by a real label (≥3 chars). Short labels ("A","F") are never used for
+ * attribution — that used to pin wrong keys on map questions.
  */
 function hitMatchesQuestionOption(
   hitText: string,
   question: ParsedQuestion,
 ): boolean {
+  if (isMapLetterQuestion(question)) return false;
   const letters = lettersInText(hitText);
   const body = optionBodyFromHit(hitText);
-  if (!body) return false;
+  if (!body || body.length < 3) return false;
   return question.options.some((o) => {
     if (letters.length > 0 && !letters.includes(o.id)) return false;
     const label = o.label.trim().toLowerCase();
-    if (!label) return false;
+    if (label.length < 3) return false;
     if (label === body) return true;
-    if (label.length >= 3 && body.includes(label.slice(0, 40))) return true;
-    if (body.length >= 1 && label === body) return true;
-    // Short map-letter labels: "А", "F", "M"
-    if (label.length <= 2 && body === label) return true;
+    if (body.includes(label.slice(0, 40))) return true;
     return false;
   });
 }
@@ -427,19 +435,21 @@ function lettersFromHitForQuestion(
   hitText: string,
   question: ParsedQuestion,
 ): string[] {
+  // Never auto-key map-letter questions — wrong beats empty.
+  if (isMapLetterQuestion(question)) return [];
+
   let letters = lettersInText(hitText).filter((id) =>
     question.options.some((o) => o.id === id),
   );
   if (letters.length === 0) {
     const t = hitText.toLowerCase();
     letters = question.options
-      .filter(
-        (o) =>
-          o.label.trim().length >= 1 &&
-          (o.label.trim().length < 3
-            ? optionBodyFromHit(hitText) === o.label.trim().toLowerCase()
-            : t.includes(o.label.toLowerCase().slice(0, 40))),
-      )
+      .filter((o) => {
+        const label = o.label.trim();
+        // Require a real word label; single map letters are too ambiguous.
+        if (label.length < 3) return false;
+        return t.includes(label.toLowerCase().slice(0, 40));
+      })
       .map((o) => o.id);
   }
   return letters;
@@ -639,6 +649,8 @@ function applyYellowAnswerKeys(
     if (!qid) continue;
     const question = byId.get(qid);
     if (!question) continue;
+    // Prefer empty key over a wrong one for map-letter options.
+    if (isMapLetterQuestion(question)) continue;
 
     const letters = lettersFromHitForQuestion(hit.text, question);
     const rows = rowsInText(hit.text).filter((id) =>
