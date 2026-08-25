@@ -2,12 +2,14 @@ import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export interface HighlightHit {
   page: number;
+  x: number;
   y: number;
   text: string;
 }
 
 export interface QuestionMarker {
   page: number;
+  x: number;
   y: number;
   id: number;
 }
@@ -369,6 +371,7 @@ export async function extractYellowHighlights(
         if (num) {
           markers.push({
             page: pageNum,
+            x,
             y,
             id: Number(num[1]),
           });
@@ -417,6 +420,7 @@ export async function extractYellowHighlights(
         if (text.length < 1) continue;
         hits.push({
           page: pageNum,
+          x: (rect.x0 + rect.x1) / 2,
           y: (rect.y0 + rect.y1) / 2,
           text,
         });

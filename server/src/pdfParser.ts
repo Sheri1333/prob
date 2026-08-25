@@ -399,21 +399,71 @@ function rowsInText(text: string): string[] {
   return found;
 }
 
+/** Group x-positions into columns wherever there's a wide horizontal gap. */
+function clusterColumns(xs: number[]): number[][] {
+  const sorted = [...xs].sort((a, b) => a - b);
+  const groups: number[][] = [];
+  let current: number[] = [];
+  for (const x of sorted) {
+    if (current.length === 0 || x - current[current.length - 1] <= 80) {
+      current.push(x);
+    } else {
+      groups.push(current);
+      current = [x];
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+
 function nearestQuestionId(
   page: number,
+  x: number,
   y: number,
   extract: HighlightExtract,
   knownIds: Set<number>,
+  matchingIds: Set<number>,
 ): number | null {
-  const pageIds = extract.markers
-    .filter((m) => m.page === page && knownIds.has(m.id))
-    .map((m) => m.id);
-  const skipSmall = pageIds.some((id) => id >= 10);
+  const pageMarkers = extract.markers.filter(
+    (m) => m.page === page && knownIds.has(m.id),
+  );
+  // Matching questions render their row list as "1.", "2." … "6." — the same
+  // shape as a real low-numbered question marker. Only treat low ids as
+  // suspect on a page that actually contains a matching question (the real
+  // source of the ambiguity), not merely because some unrelated high id is
+  // also present on the page.
+  const hasMatchingOnPage = pageMarkers.some((m) => matchingIds.has(m.id));
+  const eligible = pageMarkers.filter(
+    (m) => !(hasMatchingOnPage && m.id <= 6 && !matchingIds.has(m.id)),
+  );
+  if (eligible.length === 0) return null;
+
+  // Multi-column layouts (this exam PDF format uses two): restrict the
+  // search to markers in the same horizontal column as the highlight
+  // before picking the nearest one above it. Otherwise a highlight in the
+  // left column can jump to a marker that merely sits at a similar height
+  // in the right column, and vice versa.
+  let candidates = eligible;
+  const columns = clusterColumns(eligible.map((m) => m.x));
+  if (columns.length > 1) {
+    let bestCol = columns[0];
+    let bestDist = Infinity;
+    for (const col of columns) {
+      const lo = col[0];
+      const hi = col[col.length - 1];
+      const dist = x < lo ? lo - x : x > hi ? x - hi : 0;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestCol = col;
+      }
+    }
+    const colXs = new Set(bestCol);
+    const sameColumn = eligible.filter((m) => colXs.has(m.x));
+    if (sameColumn.length > 0) candidates = sameColumn;
+  }
 
   let best: { id: number; y: number } | null = null;
-  for (const marker of extract.markers) {
-    if (marker.page !== page || !knownIds.has(marker.id)) continue;
-    if (skipSmall && marker.id <= 6) continue;
+  for (const marker of candidates) {
     if (marker.y + 1 < y) continue;
     if (!best || marker.y < best.y) best = marker;
   }
@@ -425,6 +475,9 @@ function applyYellowAnswerKeys(
   extract: HighlightExtract,
 ): number {
   const knownIds = new Set(questions.map((q) => q.id));
+  const matchingIds = new Set(
+    questions.filter((q) => q.type === "matching").map((q) => q.id),
+  );
   const byId = new Map(questions.map((q) => [q.id, q]));
   const singleLetters = new Map<number, Set<string>>();
   const multiLetters = new Map<number, Set<string>>();
@@ -437,7 +490,7 @@ function applyYellowAnswerKeys(
 
   for (const hit of extract.hits) {
     const qid =
-      nearestQuestionId(hit.page, hit.y, extract, knownIds) ??
+      nearestQuestionId(hit.page, hit.x, hit.y, extract, knownIds, matchingIds) ??
       [...hit.text.matchAll(/(\d+)\./g)]
         .map((m) => Number(m[1]))
         .reverse()
@@ -455,7 +508,7 @@ function applyYellowAnswerKeys(
       letters = question.options
         .filter(
           (o) =>
-            o.label.length >= 6 &&
+            o.label.trim().length >= 3 &&
             t.includes(o.label.toLowerCase().slice(0, 40)),
         )
         .map((o) => o.id);
