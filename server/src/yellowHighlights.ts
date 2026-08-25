@@ -84,12 +84,12 @@ function transformRect(rect: Rect, matrix: number[]): Rect {
   };
 }
 
-function overlaps(a: Rect, b: Rect, pad = 4): boolean {
+function overlaps(a: Rect, b: Rect, xPad = 4, yPad = 4): boolean {
   return (
-    a.x0 < b.x1 + pad &&
-    a.x1 > b.x0 - pad &&
-    a.y0 < b.y1 + pad &&
-    a.y1 > b.y0 - pad
+    a.x0 < b.x1 + xPad &&
+    a.x1 > b.x0 - xPad &&
+    a.y0 < b.y1 + yPad &&
+    a.y1 > b.y0 - yPad
   );
 }
 
@@ -228,8 +228,12 @@ async function yellowRectsFromRaster(
 }
 
 function textInRects(runs: TextRun[], rects: Rect[]): string {
+  // A tight y-pad matters here: text runs carry an estimated height that can
+  // overstate their real glyph box, and a generous pad then lets a highlight
+  // rect meant for one line "bleed" into the option on the next line,
+  // corrupting the extracted answer with an extra option letter.
   const hit = runs
-    .filter((run) => rects.some((r) => overlaps(run, r)))
+    .filter((run) => rects.some((r) => overlaps(run, r, 4, 1)))
     .sort((a, b) => (Math.abs(a.y0 - b.y0) > 2 ? b.y0 - a.y0 : a.x0 - b.x0));
   return hit
     .map((r) => r.str)

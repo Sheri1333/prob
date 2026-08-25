@@ -416,14 +416,36 @@ function clusterColumns(xs: number[]): number[][] {
   return groups;
 }
 
-function nearestQuestionId(
+/**
+ * Restrict `markers` to whichever column its x-clustering places closest to
+ * `x`, when there's more than one column. Falls back to all of `markers`
+ * when there's only one column or nothing shares the chosen column exactly.
+ */
+function restrictToColumn<T extends { x: number }>(markers: T[], x: number): T[] {
+  const columns = clusterColumns(markers.map((m) => m.x));
+  if (columns.length <= 1) return markers;
+  let bestCol = columns[0];
+  let bestDist = Infinity;
+  for (const col of columns) {
+    const lo = col[0];
+    const hi = col[col.length - 1];
+    const dist = x < lo ? lo - x : x > hi ? x - hi : 0;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestCol = col;
+    }
+  }
+  const colXs = new Set(bestCol);
+  const sameColumn = markers.filter((m) => colXs.has(m.x));
+  return sameColumn.length > 0 ? sameColumn : markers;
+}
+
+function eligibleMarkersOnPage(
   page: number,
-  x: number,
-  y: number,
   extract: HighlightExtract,
   knownIds: Set<number>,
   matchingIds: Set<number>,
-): number | null {
+) {
   const pageMarkers = extract.markers.filter(
     (m) => m.page === page && knownIds.has(m.id),
   );
@@ -433,41 +455,53 @@ function nearestQuestionId(
   // source of the ambiguity), not merely because some unrelated high id is
   // also present on the page.
   const hasMatchingOnPage = pageMarkers.some((m) => matchingIds.has(m.id));
-  const eligible = pageMarkers.filter(
+  return pageMarkers.filter(
     (m) => !(hasMatchingOnPage && m.id <= 6 && !matchingIds.has(m.id)),
   );
-  if (eligible.length === 0) return null;
+}
+
+function nearestQuestionId(
+  page: number,
+  x: number,
+  y: number,
+  extract: HighlightExtract,
+  knownIds: Set<number>,
+  matchingIds: Set<number>,
+): number | null {
+  const eligible = eligibleMarkersOnPage(page, extract, knownIds, matchingIds);
 
   // Multi-column layouts (this exam PDF format uses two): restrict the
   // search to markers in the same horizontal column as the highlight
   // before picking the nearest one above it. Otherwise a highlight in the
   // left column can jump to a marker that merely sits at a similar height
   // in the right column, and vice versa.
-  let candidates = eligible;
-  const columns = clusterColumns(eligible.map((m) => m.x));
-  if (columns.length > 1) {
-    let bestCol = columns[0];
-    let bestDist = Infinity;
-    for (const col of columns) {
-      const lo = col[0];
-      const hi = col[col.length - 1];
-      const dist = x < lo ? lo - x : x > hi ? x - hi : 0;
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestCol = col;
-      }
-    }
-    const colXs = new Set(bestCol);
-    const sameColumn = eligible.filter((m) => colXs.has(m.x));
-    if (sameColumn.length > 0) candidates = sameColumn;
-  }
+  const candidates = eligible.length > 0 ? restrictToColumn(eligible, x) : [];
 
   let best: { id: number; y: number } | null = null;
   for (const marker of candidates) {
     if (marker.y + 1 < y) continue;
     if (!best || marker.y < best.y) best = marker;
   }
-  return best?.id ?? null;
+  if (best) return best.id;
+
+  // A question's options can spill past a page break (its own marker is on
+  // the previous page). If nothing on this page claims the highlight,
+  // assume it continues whichever question was still open at the bottom
+  // of the previous page. Reading flow in a 2-column layout crosses
+  // columns at the page boundary (page N's right column flows into page
+  // N+1's left column), so column-matching by x doesn't apply here —
+  // just take the previous page's overall last (lowest-y) question.
+  const prevEligible = eligibleMarkersOnPage(
+    page - 1,
+    extract,
+    knownIds,
+    matchingIds,
+  );
+  let lowest: { id: number; y: number } | null = null;
+  for (const marker of prevEligible) {
+    if (!lowest || marker.y < lowest.y) lowest = marker;
+  }
+  return lowest?.id ?? null;
 }
 
 function applyYellowAnswerKeys(
