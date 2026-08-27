@@ -16,6 +16,84 @@ interface CatalogPageProps {
   lang: Lang;
 }
 
+function setupScrollReveal(root: HTMLElement): () => void {
+  const els = [...root.querySelectorAll<HTMLElement>(".reveal")];
+  if (els.length === 0) return () => {};
+
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    for (const el of els) el.classList.add("is-visible", "is-shown");
+    return () => {};
+  }
+
+  const groups = new Map<Element, HTMLElement[]>();
+  for (const el of els) {
+    const parent = el.parentElement ?? root;
+    const list = groups.get(parent) ?? [];
+    list.push(el);
+    groups.set(parent, list);
+  }
+  for (const siblings of groups.values()) {
+    siblings.forEach((el, i) => {
+      el.style.setProperty("--reveal-delay", `${Math.min(i, 5) * 80}ms`);
+    });
+  }
+
+  const finish = (el: HTMLElement) => {
+    el.classList.add("is-shown");
+  };
+
+  const reveal = (el: HTMLElement) => {
+    if (el.classList.contains("is-visible")) return;
+    el.classList.add("is-visible");
+    const onEnd = (event: AnimationEvent) => {
+      if (event.target !== el) return;
+      if (
+        event.animationName !== "reveal-in" &&
+        event.animationName !== "reveal-in-title"
+      ) {
+        return;
+      }
+      el.removeEventListener("animationend", onEnd);
+      finish(el);
+    };
+    el.addEventListener("animationend", onEnd);
+    const delay = Number.parseFloat(el.style.getPropertyValue("--reveal-delay")) || 0;
+    window.setTimeout(() => finish(el), delay + 850);
+  };
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        reveal(entry.target as HTMLElement);
+        observer.unobserve(entry.target);
+      }
+    },
+    { threshold: 0.12, rootMargin: "0px 0px 12% 0px" },
+  );
+
+  const viewportBottom = window.innerHeight;
+  const pending: HTMLElement[] = [];
+  for (const el of els) {
+    const top = el.getBoundingClientRect().top;
+    if (top < viewportBottom - 48) {
+      pending.push(el);
+    } else {
+      observer.observe(el);
+    }
+  }
+
+  const playPending = () => {
+    for (const el of pending) reveal(el);
+  };
+  const raf = window.requestAnimationFrame(playPending);
+
+  return () => {
+    window.cancelAnimationFrame(raf);
+    observer.disconnect();
+  };
+}
+
 export function CatalogPage({ lang }: CatalogPageProps) {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
@@ -50,31 +128,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
   useLayoutEffect(() => {
     const root = pageRef.current;
     if (!root) return;
-
-    const els = [...root.querySelectorAll<HTMLElement>(".reveal")];
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          entry.target.classList.add("is-visible");
-          observer.unobserve(entry.target);
-        }
-      },
-      { threshold: 0.12, rootMargin: "0px 0px -6% 0px" },
-    );
-
-    const vh = window.innerHeight;
-    for (const el of els) {
-      const rect = el.getBoundingClientRect();
-      const inView = rect.top < vh * 0.94 && rect.bottom > 0;
-      if (inView) {
-        el.classList.add("is-visible", "reveal--instant");
-      } else {
-        observer.observe(el);
-      }
-    }
-
-    return () => observer.disconnect();
+    return setupScrollReveal(root);
   }, []);
 
   const openFreePlan = () => {
@@ -222,7 +276,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         )}
 
       <section className="pricing">
-        <h2 className="landing-section-title">Прайс</h2>
+        <h2 className="landing-section-title reveal reveal--title">Прайс</h2>
         <div className="pricing__grid">
           <div className="pricing-card reveal">
             <span className="pricing-card__badge">
@@ -337,7 +391,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       </section>
 
       <section className="landing-features">
-        <h2 className="landing-section-title">
+        <h2 className="landing-section-title reveal reveal--title">
           {lang === "kz" ? "Неге Талапкер?" : "Почему Талапкер"}
         </h2>
         <div className="landing-features__grid">
@@ -391,7 +445,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       </section>
 
       <section className="landing-features">
-        <h2 className="landing-section-title">
+        <h2 className="landing-section-title reveal reveal--title">
           {lang === "kz" ? "Қалай жұмыс істейді" : "Как это работает"}
         </h2>
         <div className="landing-features__grid landing-features__grid--wide">
