@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -19,8 +19,8 @@ interface CatalogPageProps {
 export function CatalogPage({ lang }: CatalogPageProps) {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
+  const pageRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const [blueprint, setBlueprint] = useState<Awaited<
     ReturnType<typeof api.getExamBlueprint>
   > | null>(null);
@@ -29,29 +29,51 @@ export function CatalogPage({ lang }: CatalogPageProps) {
   const { toasts, push: toast, dismiss: dismissToast } = useToasts();
 
   useEffect(() => {
+    let cancelled = false;
     api
       .getExamBlueprint()
-      .then((bp) => setBlueprint(bp))
-      .catch((e) =>
-        setError(e instanceof Error ? e.message : "Не удалось загрузить ЕНТ"),
-      )
-      .finally(() => setLoading(false));
+      .then((bp) => {
+        if (!cancelled) setBlueprint(bp);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(
+            e instanceof Error ? e.message : "Не удалось загрузить ЕНТ",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    const els = document.querySelectorAll<HTMLElement>(".reveal");
+  useLayoutEffect(() => {
+    const root = pageRef.current;
+    if (!root) return;
+
+    const els = [...root.querySelectorAll<HTMLElement>(".reveal")];
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("is-visible");
-            observer.unobserve(entry.target);
-          }
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("is-visible");
+          observer.unobserve(entry.target);
         }
       },
-      { threshold: 0.15 },
+      { threshold: 0.12, rootMargin: "0px 0px -6% 0px" },
     );
-    els.forEach((el) => observer.observe(el));
+
+    const vh = window.innerHeight;
+    for (const el of els) {
+      const rect = el.getBoundingClientRect();
+      const inView = rect.top < vh * 0.94 && rect.bottom > 0;
+      if (inView) {
+        el.classList.add("is-visible", "reveal--instant");
+      } else {
+        observer.observe(el);
+      }
+    }
+
     return () => observer.disconnect();
   }, []);
 
@@ -60,7 +82,8 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       navigate("/login", { state: { from: "/", notice: "pricing" } });
       return;
     }
-    if (!blueprint || !blueprint.ready) {
+    if (!blueprint) return;
+    if (!blueprint.ready) {
       toast(
         "error",
         lang === "kz"
@@ -88,8 +111,10 @@ export function CatalogPage({ lang }: CatalogPageProps) {
 
   const resume = loadExamDraft();
 
+  const sessionMinutes = blueprint?.durationMinutes ?? 240;
+
   return (
-    <div className="page">
+    <div className="page" ref={pageRef}>
       <header className="site-header">
         <div className="site-header__logo">Талапкер</div>
         <nav className="site-header__nav">
@@ -129,9 +154,8 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         </p>
       </section>
 
-      {loading && <p className="page">Загрузка...</p>}
       {error && (
-        <p className="auth-card__error">
+        <p className="auth-card__error catalog-error">
           {error}. Запустите API: <code>npm run server</code>
         </p>
       )}
@@ -231,14 +255,12 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                   ? "Калькулятор және Менделеев кестесі"
                   : "Калькулятор и таблица Менделеева"}
               </li>
-              {blueprint && (
-                <li className="ok">
-                  <span className="material-symbols-outlined">check_circle</span>
-                  {lang === "kz"
-                    ? `Толық сессия — ${blueprint.durationMinutes} ${t("minutes", lang)}`
-                    : `Полная сессия — ${blueprint.durationMinutes} ${t("minutes", lang)}`}
-                </li>
-              )}
+              <li className="ok">
+                <span className="material-symbols-outlined">check_circle</span>
+                {lang === "kz"
+                  ? `Толық сессия — ${sessionMinutes} ${t("minutes", lang)}`
+                  : `Полная сессия — ${sessionMinutes} ${t("minutes", lang)}`}
+              </li>
             </ul>
             <button
               type="button"

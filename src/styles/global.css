@@ -4,6 +4,14 @@
   box-sizing: border-box;
 }
 
+html {
+  background: #f4f5fb;
+}
+
+html[data-theme="dark"] {
+  background: #11131e;
+}
+
 :root {
   /* Indigo — primary brand accent (testnik.kz-inspired) */
   --blue: #5466f5;
@@ -404,11 +412,21 @@ select {
 
 .reveal {
   opacity: 0;
-  transition: opacity 0.6s ease;
+  transform: translateY(16px);
+  transition:
+    opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .reveal.is-visible {
   opacity: 1;
+  transform: none;
+}
+
+.reveal.reveal--instant {
+  opacity: 1;
+  transform: none;
+  transition: none;
 }
 
 .landing-features__grid .reveal:nth-child(2),
@@ -435,11 +453,49 @@ select {
   transition-delay: 0.4s;
 }
 
+.catalog-error {
+  margin: 0 0 1.25rem;
+}
+
+.combo-modal-overlay {
+  animation: overlay-in 0.22s ease;
+}
+
+.combo-modal {
+  animation: modal-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .reveal {
+  .reveal,
+  .reveal.reveal--instant {
     opacity: 1;
     transform: none;
     transition: none;
+  }
+
+  .combo-modal-overlay,
+  .combo-modal {
+    animation: none;
   }
 }
 
@@ -631,6 +687,7 @@ span.landing-feature__icon {
   letter-spacing: normal;
   text-transform: none;
   display: inline-block;
+  overflow: hidden;
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
