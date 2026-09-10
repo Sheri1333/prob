@@ -40,6 +40,11 @@ export function AnswerKeyEditor({
       {questions.map((q, index) => {
         const open = openId === q.id;
         const keyed = isAnswerKeyComplete(q);
+        const photoCount =
+          (q.images?.length ?? 0) +
+          (q.type === "matching"
+            ? q.rows.filter((row) => row.image).length
+            : 0);
         return (
           <article
             key={q.id}
@@ -59,8 +64,8 @@ export function AnswerKeyEditor({
               >
                 {keyed ? "ключ есть" : "нет ключа"}
               </span>
-              {(q.images?.length ?? 0) > 0 && (
-                <span className="admin-q__img">{q.images!.length} фото</span>
+              {photoCount > 0 && (
+                <span className="admin-q__img">{photoCount} фото</span>
               )}
               <span className="admin-q__text">{q.text || "Без текста"}</span>
             </button>
@@ -117,7 +122,7 @@ export function AnswerKeyEditor({
                     ))}
                   </div>
                 )}
-                {onUploadImage && (
+                {q.type !== "matching" && onUploadImage && (
                   <label className="admin-btn admin-q__add-photo">
                     Прикрепить картинку
                     <input
@@ -143,6 +148,7 @@ export function AnswerKeyEditor({
                   <MatchingKey
                     question={q}
                     onChange={(next) => updateAt(index, next)}
+                    onUploadImage={onUploadImage}
                   />
                 ) : (
                   <ChoiceKey
@@ -284,9 +290,11 @@ function ChoiceKey({
 function MatchingKey({
   question,
   onChange,
+  onUploadImage,
 }: {
   question: Extract<Question, { type: "matching" }>;
   onChange: (q: Extract<Question, { type: "matching" }>) => void;
+  onUploadImage?: (file: File) => Promise<string>;
 }) {
   const pairs = question.correctAnswers ?? {};
   const used = new Set(Object.values(pairs));
@@ -298,10 +306,17 @@ function MatchingKey({
     onChange({ ...question, correctAnswers: next });
   };
 
-  const updateRow = (rowId: string, label: string) => {
+  const updateRow = (rowId: string, patch: { label?: string; image?: string | null }) => {
     onChange({
       ...question,
-      rows: question.rows.map((r) => (r.id === rowId ? { ...r, label } : r)),
+      rows: question.rows.map((r) => {
+        if (r.id !== rowId) return r;
+        const next = { ...r };
+        if (patch.label !== undefined) next.label = patch.label;
+        if (patch.image === null) delete next.image;
+        else if (patch.image !== undefined) next.image = patch.image;
+        return next;
+      }),
     });
   };
 
@@ -347,8 +362,9 @@ function MatchingKey({
   return (
     <div className="admin-match">
       <p className="admin-hint">
-        Слева — пункты 1, 2… Справа — варианты A, B, C, D. Для каждой строки
-        выберите букву. Одна буква — только к одной строке.
+        Слева — пункты 1, 2… К каждому пункту можно прикрепить фото. Справа —
+        варианты A, B, C, D. Для каждой строки выберите букву. Одна буква —
+        только к одной строке.
       </p>
       <div className="admin-match__grid">
         <div className="admin-match__col">
@@ -356,11 +372,43 @@ function MatchingKey({
           {question.rows.map((row) => (
             <div key={row.id} className="admin-match__row">
               <span className="admin-match__id">{row.id}.</span>
-              <input
-                value={row.label}
-                onChange={(e) => updateRow(row.id, e.target.value)}
-                placeholder="Текст строки"
-              />
+              <div className="admin-match__row-main">
+                {row.image && (
+                  <div className="admin-match__row-photo">
+                    <img src={mediaUrl(row.image)} alt={`Строка ${row.id}`} />
+                    <button
+                      type="button"
+                      className="admin-q__photo-remove"
+                      onClick={() => updateRow(row.id, { image: null })}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                <input
+                  value={row.label}
+                  onChange={(e) => updateRow(row.id, { label: e.target.value })}
+                  placeholder={row.image ? "Подпись (необязательно)" : "Текст строки"}
+                />
+                {onUploadImage && (
+                  <label className="admin-btn admin-match__photo-btn">
+                    {row.image ? "Заменить фото" : "Фото"}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        void onUploadImage(file).then((url) => {
+                          updateRow(row.id, { image: url });
+                        });
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
               <select
                 value={pairs[row.id] ?? ""}
                 onChange={(e) => setPair(row.id, e.target.value)}

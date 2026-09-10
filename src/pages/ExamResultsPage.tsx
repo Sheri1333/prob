@@ -40,12 +40,6 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
         </div>
       </header>
 
-      <div className="ent-results__watermark" aria-hidden>
-        {Array.from({ length: 24 }).map((_, i) => (
-          <span key={i}>{t("watermark", lang)}</span>
-        ))}
-      </div>
-
       <section className="ent-results__panel">
         <table className="ent-summary-table">
           <thead>
@@ -99,10 +93,12 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
           ? section.questionIds
           : Array.from({ length: section.questionCount }, (_, i) => i + 1);
         return (
-          <details key={section.testId} className="ent-detail">
+          <details key={section.testId} className="ent-detail" open>
             <summary className="ent-detail__toggle">
               <span className="material-symbols-outlined">expand_more</span>
-              {lang === "kz" ? "Тапсырмалар бойынша егжей-тегжей" : "Подробности по заданиям"}
+              {lang === "kz"
+                ? section.titleKz || translateSubject(section.subject, lang)
+                : section.title || translateSubject(section.subject, lang)}
             </summary>
             <div className="ent-detail__meta">
               <div>

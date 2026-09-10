@@ -80,20 +80,38 @@ export async function persistQuestionImages(
 ): Promise<Question[]> {
   const out: Question[] = [];
   for (const q of questions) {
-    if (!q.images?.length) {
-      out.push(q);
-      continue;
+    let next: Question = q;
+    if (q.images?.length) {
+      const images: string[] = [];
+      for (let i = 0; i < q.images.length; i++) {
+        images.push(
+          await persistSrc(q.images[i], `q${q.id}_${i}`, {
+            kind: "question",
+            questionId: q.id,
+          }),
+        );
+      }
+      next = { ...next, images };
     }
-    const images: string[] = [];
-    for (let i = 0; i < q.images.length; i++) {
-      images.push(
-        await persistSrc(q.images[i], `q${q.id}_${i}`, {
-          kind: "question",
-          questionId: q.id,
-        }),
-      );
+    if (next.type === "matching") {
+      const rows = [];
+      for (const row of next.rows) {
+        if (!row.image) {
+          rows.push(row);
+          continue;
+        }
+        rows.push({
+          ...row,
+          image: await persistSrc(row.image, `q${q.id}_r${row.id}`, {
+            kind: "matching-row",
+            questionId: q.id,
+            rowId: row.id,
+          }),
+        });
+      }
+      next = { ...next, rows };
     }
-    out.push({ ...q, images });
+    out.push(next);
   }
   return out;
 }

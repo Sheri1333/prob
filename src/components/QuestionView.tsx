@@ -80,6 +80,7 @@ export function QuestionView({
             typeof answer === "object" && !Array.isArray(answer) ? answer : {}
           }
           onChange={onAnswerChange}
+          onZoom={onZoom}
         />
       )}
     </article>

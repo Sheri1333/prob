@@ -8,6 +8,7 @@ export interface TestOption {
 export interface MatchingRow {
   id: string;
   label: string;
+  image?: string;
 }
 
 export interface BaseQuestion {

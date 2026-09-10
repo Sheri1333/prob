@@ -1,5 +1,7 @@
+import { mediaUrl } from "../../api/client";
 import type { Lang } from "../../i18n/strings";
-import type { TestOption } from "../../types/test";
+import { t } from "../../i18n/strings";
+import type { MatchingRow, TestOption } from "../../types/test";
 
 interface SingleChoiceQuestionProps {
   name: string;
@@ -84,10 +86,11 @@ export function MultipleChoiceQuestion({
 
 interface MatchingQuestionProps {
   lang: Lang;
-  rows: { id: string; label: string }[];
+  rows: MatchingRow[];
   options: TestOption[];
   value: Record<string, string>;
   onChange: (value: Record<string, string>) => void;
+  onZoom?: (src: string) => void;
 }
 
 export function MatchingQuestion({
@@ -96,6 +99,7 @@ export function MatchingQuestion({
   options,
   value,
   onChange,
+  onZoom,
 }: MatchingQuestionProps) {
   const placeholder = lang === "kz" ? "Жауапты таңдаңыз" : "Выберите ответ";
   const used = new Set(
@@ -103,43 +107,76 @@ export function MatchingQuestion({
       .filter(([, optionId]) => optionId)
       .map(([, optionId]) => optionId),
   );
+  const imageMatching = rows.some((row) => row.image);
 
   return (
     <div className="matching-block">
-      <div className="matching-legend">
-        {options.map((opt) => (
-          <div key={opt.id} className="matching-legend__item">
-            <span className="matching-legend__id">{opt.id})</span>
-            <span>{opt.label}</span>
-          </div>
-        ))}
-      </div>
-      <div className="matching-table">
-        {rows.map((row) => (
-          <div key={row.id} className="matching-row">
-            <div className="matching-row__term">
-              {row.id}. {row.label}
+      {!imageMatching && (
+        <div className="matching-legend">
+          {options.map((opt) => (
+            <div key={opt.id} className="matching-legend__item">
+              <span className="matching-legend__id">{opt.id})</span>
+              <span>{opt.label}</span>
             </div>
-            <select
-              className="matching-row__select"
-              value={value[row.id] ?? ""}
-              onChange={(e) =>
-                onChange({ ...value, [row.id]: e.target.value })
-              }
+          ))}
+        </div>
+      )}
+      <div className="matching-table">
+        {rows.map((row) => {
+          const imageUrl = row.image ? mediaUrl(row.image) : "";
+          return (
+            <div
+              key={row.id}
+              className={`matching-row${imageUrl ? " matching-row--media" : ""}`}
             >
-              <option value="">{placeholder}</option>
-              {options.map((opt) => (
-                <option
-                  key={opt.id}
-                  value={opt.id}
-                  disabled={used.has(opt.id) && value[row.id] !== opt.id}
-                >
-                  {opt.id}
-                </option>
-              ))}
-            </select>
-          </div>
-        ))}
+              <div className="matching-row__term">
+                <span className="matching-row__id">{row.id})</span>
+                <div className="matching-row__prompt">
+                  {imageUrl && (
+                    <div className="matching-row__figure">
+                      <img src={imageUrl} alt="" />
+                      {onZoom && (
+                        <button
+                          type="button"
+                          className="exam-card__zoom"
+                          onClick={() => onZoom(imageUrl)}
+                        >
+                          <span className="material-symbols-outlined">
+                            zoom_in
+                          </span>
+                          {t("zoomImage", lang)}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {row.label ? <span>{row.label}</span> : null}
+                </div>
+              </div>
+              <select
+                className="matching-row__select"
+                value={value[row.id] ?? ""}
+                onChange={(e) =>
+                  onChange({ ...value, [row.id]: e.target.value })
+                }
+              >
+                <option value="">{placeholder}</option>
+                {options.map((opt) => (
+                  <option
+                    key={opt.id}
+                    value={opt.id}
+                    disabled={used.has(opt.id) && value[row.id] !== opt.id}
+                  >
+                    {imageMatching
+                      ? opt.label || opt.id
+                      : opt.label
+                        ? `${opt.id}) ${opt.label}`
+                        : opt.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
