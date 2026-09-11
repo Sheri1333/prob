@@ -67,7 +67,7 @@ async function upsertTest(payload: ReturnType<typeof validateTestPayload>) {
 adminRouter.get("/stats", async (_req, res) => {
   const [userCount, adminCount, testCount, attemptCount, avgAgg, recentUsers, topAttempts] =
     await Promise.all([
-      users().countDocuments({ role: "user" }),
+      users().countDocuments(),
       users().countDocuments({ role: "admin" }),
       tests().countDocuments(),
       attempts().countDocuments(),

@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+exec 9>"$ROOT/.deploy.lock"
+flock 9
+
 echo "==> $(date -Iseconds) deploy in $ROOT"
 
 git fetch origin

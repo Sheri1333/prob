@@ -97,15 +97,13 @@ systemctl enable --now nginx
 systemctl reload nginx
 
 cp "$APP_DIR/deploy/talapker-api.service" /etc/systemd/system/talapker-api.service
-cp "$APP_DIR/deploy/talapker-watch.service" /etc/systemd/system/talapker-watch.service
-cp "$APP_DIR/deploy/talapker-watch.timer" /etc/systemd/system/talapker-watch.timer
 systemctl daemon-reload
-systemctl enable talapker-api talapker-watch.timer
+systemctl enable talapker-api
+systemctl disable --now talapker-watch.timer 2>/dev/null || true
 
 echo "==> first build"
 sudo -u "$APP_USER" -H bash "$APP_DIR/deploy/deploy.sh"
 systemctl enable --now talapker-api
-systemctl start talapker-watch.timer
 
 if command -v mongosh >/dev/null 2>&1; then
   COUNT="$(mongosh --quiet --eval 'db.getSiblingDB("prob").tests.countDocuments()' || echo 0)"
