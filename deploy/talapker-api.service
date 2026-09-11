@@ -1,0 +1,19 @@
+[Unit]
+Description=Talapker API
+After=network.target mongod.service
+Wants=mongod.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/var/www/talapker/server
+Environment=NODE_ENV=production
+Environment=PATH=/usr/bin:/usr/local/bin
+EnvironmentFile=/var/www/talapker/server/.env
+ExecStart=/usr/bin/npx tsx src/index.ts
+Restart=always
+RestartSec=3
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

@@ -100,7 +100,7 @@ export async function connectDb(): Promise<Db> {
 
   const uri = process.env.MONGODB_URI?.trim();
   if (!uri) {
-    throw new Error("MONGODB_URI не задан. Добавьте его в server/.env или в переменные Railway.");
+    throw new Error("MONGODB_URI не задан. Добавьте его в server/.env");
   }
 
   console.log(

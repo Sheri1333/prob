@@ -1,0 +1,8 @@
+[Unit]
+Description=Talapker git autodeploy checker
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/var/www/talapker
+ExecStart=/var/www/talapker/deploy/watch.sh

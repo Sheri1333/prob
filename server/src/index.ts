@@ -11,11 +11,12 @@ import { examsRouter } from "./routes/exams.js";
 import { filesRouter } from "./routes/files.js";
 
 const PORT = Number(process.env.PORT) || 3001;
+const HOST = process.env.HOST || "0.0.0.0";
 
 const allowedOrigins = [
-  "https://prob-coral.vercel.app",
   "http://localhost:5173",
   "http://localhost:4173",
+  "http://127.0.0.1:5173",
   ...(process.env.CORS_ORIGIN ?? "")
     .split(",")
     .map((s) => s.trim())
@@ -28,11 +29,7 @@ const corsMw = cors({
       callback(null, true);
       return;
     }
-    const ok =
-      allowedOrigins.includes(origin) ||
-      origin.endsWith(".vercel.app") ||
-      origin.endsWith(".up.railway.app");
-    callback(null, ok ? origin : false);
+    callback(null, allowedOrigins.includes(origin) ? origin : false);
   },
   methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -87,8 +84,8 @@ app.use(
   },
 );
 
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Талапкер API http://0.0.0.0:${PORT}`);
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Талапкер API http://${HOST}:${PORT}`);
   console.log(`Uploads ${UPLOADS_DIR}`);
 });
 
@@ -103,7 +100,7 @@ async function connectLoop(): Promise<void> {
         err instanceof Error ? err.message : err,
       );
       console.error(
-        "Check Atlas Network Access (0.0.0.0/0) and MONGODB_URI. Retry in 8s...",
+        "Check MONGODB_URI and that MongoDB is running. Retry in 8s...",
       );
       await new Promise((resolve) => setTimeout(resolve, 8000));
     }

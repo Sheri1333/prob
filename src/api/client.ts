@@ -7,10 +7,8 @@ import type {
 const TOKEN_KEY = "prob_token";
 const USER_KEY = "prob_user";
 
-/** API origin: empty in Vite dev (proxy), Railway in production builds. */
-export const API_BASE = import.meta.env.DEV
-  ? ""
-  : "https://prob-production-51a0.up.railway.app";
+/** Same origin in Vite (proxy) and on the VPS (Nginx). Override with VITE_API_URL if needed. */
+export const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 /** Resolve /uploads/... or leave data:/http(s) as-is. */
 export function mediaUrl(src: string): string {
