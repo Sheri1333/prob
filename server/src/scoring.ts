@@ -175,8 +175,13 @@ export function validateTestPayload(body: unknown): TestPayload {
   }
   const b = body as Record<string, unknown>;
   const requestedId = typeof b.id === "string" ? b.id.trim() : "";
-  if (typeof b.title !== "string") throw new Error("title обязателен");
-  if (typeof b.titleKz !== "string") throw new Error("titleKz обязателен");
+  const titleKz =
+    typeof b.titleKz === "string" && b.titleKz.trim()
+      ? b.titleKz.trim()
+      : typeof b.title === "string"
+        ? b.title.trim()
+        : "";
+  if (!titleKz) throw new Error("Название на казахском обязательно");
   if (typeof b.section !== "string") throw new Error("section обязателен");
   if (typeof b.subject !== "string") throw new Error("subject обязателен");
   if (typeof b.durationMinutes !== "number") {
@@ -188,14 +193,14 @@ export function validateTestPayload(body: unknown): TestPayload {
   assertAnswerKeys(b.questions as Question[]);
   return {
     id: requestedId || newTestId(),
-    title: b.title,
-    titleKz: b.titleKz,
+    title: titleKz,
+    titleKz,
     section: b.section,
     examType: "ENT",
     subject: b.subject,
     durationMinutes: b.durationMinutes,
-    isFree: b.isFree !== false,
-    priceTenge: typeof b.priceTenge === "number" ? b.priceTenge : null,
+    isFree: true,
+    priceTenge: null,
     description: typeof b.description === "string" ? b.description : "",
     coverImage: typeof b.coverImage === "string" ? b.coverImage : "",
     questions: b.questions as Question[],

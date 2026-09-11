@@ -13,8 +13,13 @@ import {
   type EntBlockKind,
 } from "../ent.js";
 import { scoreTest, stripAnswers, type AnswerValue } from "../scoring.js";
+import { getPricing } from "../settings.js";
 
 export const examsRouter = Router();
+
+examsRouter.get("/pricing", async (_req, res) => {
+  res.json(await getPricing());
+});
 
 function pickVariant(
   pool: TestDoc[],

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api } from "../api/client";
+import { api, type EntPricing } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnimatedNumber } from "../components/AnimatedNumber";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -102,6 +102,11 @@ export function CatalogPage({ lang }: CatalogPageProps) {
   const [blueprint, setBlueprint] = useState<Awaited<
     ReturnType<typeof api.getExamBlueprint>
   > | null>(null);
+  const [pricing, setPricing] = useState<EntPricing>({
+    trialEnabled: true,
+    singlePriceTenge: 500,
+    bundlePriceTenge: 1250,
+  });
   const [comboModalOpen, setComboModalOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const { toasts, push: toast, dismiss: dismissToast } = useToasts();
@@ -120,6 +125,12 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           );
         }
       });
+    api
+      .getPricing()
+      .then((p) => {
+        if (!cancelled) setPricing(p);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -153,6 +164,19 @@ export function CatalogPage({ lang }: CatalogPageProps) {
     if (!ready) return;
     setComboModalOpen(false);
     navigate(`/exam?combo=${encodeURIComponent(comboId)}`);
+  };
+
+  const buySoon = () => {
+    if (!user) {
+      navigate("/login", { state: { from: "/", notice: "pricing" } });
+      return;
+    }
+    toast(
+      "ok",
+      lang === "kz"
+        ? "Төлем жақында қосылады"
+        : "Оплата скоро подключится",
+    );
   };
 
   const resumeExam = () => {
@@ -276,90 +300,111 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         )}
 
       <section className="pricing">
-        <h2 className="landing-section-title reveal reveal--title">Прайс</h2>
+        <h2 className="landing-section-title reveal reveal--title">
+          {lang === "kz" ? "Бағалар" : "Цены"}
+        </h2>
+        <p className="pricing__lead reveal">
+          {lang === "kz"
+            ? "Баға толық ҰБТ үшін. Жеке пән сатылмайды."
+            : "Цена за полный ЕНТ. Отдельные предметы не продаются."}
+        </p>
         <div className="pricing__grid">
+          {pricing.trialEnabled && (
+            <div className="pricing-card reveal">
+              <span className="pricing-card__badge">
+                {lang === "kz" ? "Қазір" : "Сейчас"}
+              </span>
+              <h3 className="pricing-card__name">
+                {lang === "kz" ? "1 пробный" : "1 пробный"}
+              </h3>
+              <div className="pricing-card__price">0 ₸</div>
+              <ul className="pricing-card__list">
+                <li className="ok">
+                  <span className="material-symbols-outlined">check_circle</span>
+                  {lang === "kz" ? "Толық ҰБТ бір рет" : "Полный ЕНТ один раз"}
+                </li>
+                <li className="ok">
+                  <span className="material-symbols-outlined">check_circle</span>
+                  {lang === "kz"
+                    ? "Барлық бейіндік комбинациялар"
+                    : "Все профильные комбинации"}
+                </li>
+                <li className="ok">
+                  <span className="material-symbols-outlined">check_circle</span>
+                  {lang === "kz"
+                    ? `Сессия — ${sessionMinutes} ${t("minutes", lang)}`
+                    : `Сессия — ${sessionMinutes} ${t("minutes", lang)}`}
+                </li>
+              </ul>
+              <button
+                type="button"
+                className="test-card__cta pricing-card__cta"
+                onClick={openFreePlan}
+              >
+                {lang === "kz" ? "Бастау" : "Начать"}
+              </button>
+            </div>
+          )}
+
           <div className="pricing-card reveal">
             <span className="pricing-card__badge">
-              {lang === "kz" ? "Қазір қолжетімді" : "Доступно сейчас"}
+              {lang === "kz" ? "1 тест" : "1 тест"}
             </span>
             <h3 className="pricing-card__name">
-              {lang === "kz" ? "Тегін" : "Бесплатный"}
+              {lang === "kz" ? "Толық ҰБТ" : "Полный ЕНТ"}
             </h3>
-            <div className="pricing-card__price">0 ₸</div>
+            <div className="pricing-card__price">
+              {pricing.singlePriceTenge} ₸
+            </div>
             <ul className="pricing-card__list">
               <li className="ok">
                 <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz" ? "Толық пробный ҰБТ" : "Полный пробный ЕНТ"}
+                {lang === "kz" ? "Бір толық сессия" : "Одна полная сессия"}
               </li>
               <li className="ok">
                 <span className="material-symbols-outlined">check_circle</span>
                 {lang === "kz"
-                  ? "Барлық бейіндік комбинациялар"
-                  : "Все профильные комбинации"}
-              </li>
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz"
-                  ? "Жедел нәтиже және талдау"
-                  : "Мгновенный результат и разбор"}
-              </li>
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz"
-                  ? "Калькулятор және Менделеев кестесі"
-                  : "Калькулятор и таблица Менделеева"}
-              </li>
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz"
-                  ? `Толық сессия — ${sessionMinutes} ${t("minutes", lang)}`
-                  : `Полная сессия — ${sessionMinutes} ${t("minutes", lang)}`}
+                  ? "Нәтиже және қате талдауы"
+                  : "Результат и разбор ошибок"}
               </li>
             </ul>
             <button
               type="button"
               className="test-card__cta pricing-card__cta"
-              onClick={openFreePlan}
+              onClick={buySoon}
             >
-              {lang === "kz" ? "Пайдалану" : "Пользоваться"}
+              {lang === "kz" ? "Сатып алу" : "Купить"}
             </button>
           </div>
 
-          <div className="pricing-card pricing-card--soon reveal">
+          <div className="pricing-card pricing-card--featured reveal">
             <span className="pricing-card__badge">
-              {lang === "kz" ? "Жақында" : "Скоро"}
+              {lang === "kz" ? "Тиімді" : "Выгодно"}
             </span>
-            <h3 className="pricing-card__name">Premium</h3>
+            <h3 className="pricing-card__name">2+1</h3>
             <div className="pricing-card__price">
-              —
-              <small>
-                {lang === "kz" ? " бағасы белгіленбеген" : " цена не определена"}
-              </small>
+              {pricing.bundlePriceTenge} ₸
             </div>
             <ul className="pricing-card__list">
-              <li className="soon">
-                <span className="material-symbols-outlined">schedule</span>
+              <li className="ok">
+                <span className="material-symbols-outlined">check_circle</span>
                 {lang === "kz"
-                  ? "Шектеусіз қайталау мүмкіндігі"
-                  : "Безлимитные повторные попытки"}
+                  ? "3 толық ҰБТ — екеуінің бағасына"
+                  : "3 полных ЕНТ по цене двух"}
               </li>
-              <li className="soon">
-                <span className="material-symbols-outlined">schedule</span>
+              <li className="ok">
+                <span className="material-symbols-outlined">check_circle</span>
                 {lang === "kz"
-                  ? "Толық статистика тарихы"
-                  : "Расширенная статистика по истории"}
-              </li>
-              <li className="soon">
-                <span className="material-symbols-outlined">schedule</span>
-                {lang === "kz" ? "PDF есеп жүктеу" : "Экспорт результатов в PDF"}
+                  ? "Қайта тапсырып, баллды өсіріңіз"
+                  : "Пересдайте и поднимите балл"}
               </li>
             </ul>
             <button
               type="button"
               className="test-card__cta pricing-card__cta"
-              disabled
+              onClick={buySoon}
             >
-              {lang === "kz" ? "Жақында қолжетімді болады" : "Скоро будет доступно"}
+              {lang === "kz" ? "Сатып алу" : "Купить"}
             </button>
           </div>
         </div>

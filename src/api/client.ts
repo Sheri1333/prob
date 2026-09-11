@@ -1,4 +1,4 @@
-import type { AnswerValue, CatalogItem, Question, TestDefinition } from "../types/test";
+import type { AnswerValue, Question, TestDefinition } from "../types/test";
 import type {
   ExamStartResponse,
   ExamSubmitResponse,
@@ -74,6 +74,12 @@ async function request<T>(
   return data;
 }
 
+export interface EntPricing {
+  trialEnabled: boolean;
+  singlePriceTenge: number;
+  bundlePriceTenge: number;
+}
+
 export const api = {
   register(body: { email: string; password: string; name: string }) {
     return request<{ token: string; user: AuthUser }>("/auth/register", {
@@ -91,10 +97,6 @@ export const api = {
 
   me() {
     return request<{ user: AuthUser }>("/auth/me");
-  },
-
-  getCatalog() {
-    return request<{ tests: CatalogItem[] }>("/tests");
   },
 
   getExamBlueprint() {
@@ -118,6 +120,10 @@ export const api = {
         variantCount2: number;
       }>;
     }>("/exams/blueprint");
+  },
+
+  getPricing() {
+    return request<EntPricing>("/exams/pricing");
   },
 
   startExam(body: {
@@ -278,6 +284,17 @@ export const api = {
         updatedAt: string;
       }>;
     }>("/admin/tests");
+  },
+
+  adminGetPricing() {
+    return request<EntPricing>("/admin/pricing");
+  },
+
+  adminSavePricing(body: EntPricing) {
+    return request<EntPricing>("/admin/pricing", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
   },
 
   adminGetTest(id: string) {

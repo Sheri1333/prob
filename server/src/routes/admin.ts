@@ -7,6 +7,7 @@ import { validateTestPayload, type Question } from "../scoring.js";
 import { persistCoverImage, persistQuestionImages, storeImage } from "../gridfs.js";
 import { parsePdfBuffer, toTestQuestions } from "../pdfParser.js";
 import { isUuid, newTestId } from "../ids.js";
+import { getPricing, savePricing } from "../settings.js";
 
 export const adminRouter = Router();
 const upload = multer({
@@ -28,6 +29,23 @@ const imageUpload = multer({
 
 adminRouter.use(adminRequired);
 
+adminRouter.get("/pricing", async (_req, res) => {
+  res.json(await getPricing());
+});
+
+adminRouter.put("/pricing", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as {
+      trialEnabled?: boolean;
+      singlePriceTenge?: number;
+      bundlePriceTenge?: number;
+    };
+    res.json(await savePricing(body));
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Ошибка сохранения цен" });
+  }
+});
+
 async function resolveTestId(requested: string): Promise<string> {
   const existing = await tests().findOne({ _id: requested });
   if (existing) return requested;
@@ -41,15 +59,15 @@ async function upsertTest(payload: ReturnType<typeof validateTestPayload>) {
     { _id: payload.id },
     {
       $set: {
-        title: payload.title,
+        title: payload.titleKz,
         titleKz: payload.titleKz,
         section: payload.section,
         examType: "ENT",
         subject: payload.subject,
         durationMinutes: payload.durationMinutes,
         questionCount: payload.questions.length,
-        isFree: payload.isFree !== false,
-        priceTenge: payload.priceTenge ?? null,
+        isFree: true,
+        priceTenge: null,
         description: payload.description ?? "",
         coverImage: payload.coverImage ?? "",
         questions: payload.questions,
@@ -351,7 +369,9 @@ adminRouter.post("/tests/:id/duplicate", async (req, res) => {
   const questions = JSON.parse(JSON.stringify(row.questions)) as Question[];
   await tests().insertOne({
     _id: newId,
-    title: /копия/i.test(row.title) ? row.title : `${row.title} (копия)`,
+    title: /көшірме/i.test(row.titleKz)
+      ? row.titleKz
+      : `${row.titleKz} (көшірме)`,
     titleKz: /көшірме/i.test(row.titleKz)
       ? row.titleKz
       : `${row.titleKz} (көшірме)`,
@@ -360,8 +380,8 @@ adminRouter.post("/tests/:id/duplicate", async (req, res) => {
     subject: row.subject,
     durationMinutes: row.durationMinutes,
     questionCount: questions.length,
-    isFree: row.isFree !== false,
-    priceTenge: row.priceTenge,
+    isFree: true,
+    priceTenge: null,
     description: row.description ?? "",
     coverImage: row.coverImage ?? "",
     questions,
@@ -449,7 +469,7 @@ adminRouter.post("/tests/parse-pdf", upload.single("file"), async (req, res) => 
 
     const draft = {
       id: newTestId(),
-      title: `ЕНТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
+      title: `ҰБТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
       titleKz: `ҰБТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
       section: "География",
       examType: "ENT",

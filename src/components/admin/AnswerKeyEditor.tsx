@@ -241,8 +241,8 @@ function ChoiceKey({
     <div>
       <p className="admin-hint">
         {question.type === "single_choice"
-          ? "Нажмите «правильный» у верного варианта."
-          : "Отметьте все правильные варианты."}
+          ? "Нажмите букву у верного варианта."
+          : "Нажмите буквы всех верных вариантов."}
       </p>
       <div className="admin-key-opts">
         {question.options.map((option) => {
@@ -255,10 +255,14 @@ function ChoiceKey({
               <button
                 type="button"
                 className="admin-key-opt__mark"
+                aria-pressed={on}
+                title={on ? "Снять отметку" : "Отметить как верный"}
                 onClick={() => toggle(option.id)}
               >
                 <span className="admin-key-opt__letter">{option.id}</span>
-                {on ? "правильный" : "отметить"}
+                <span className="admin-key-opt__state">
+                  {on ? "Верный" : "Верный?"}
+                </span>
               </button>
               <input
                 value={option.label}
@@ -268,7 +272,8 @@ function ChoiceKey({
               {question.options.length > 2 && (
                 <button
                   type="button"
-                  className="admin-match__remove"
+                  className="admin-key-opt__remove"
+                  aria-label={`Удалить вариант ${option.id}`}
                   onClick={() => removeOption(option.id)}
                 >
                   ×
@@ -279,7 +284,7 @@ function ChoiceKey({
         })}
       </div>
       {question.options.length < 8 && (
-        <button type="button" className="admin-match__add" onClick={addOption}>
+        <button type="button" className="admin-key-add" onClick={addOption}>
           + вариант
         </button>
       )}

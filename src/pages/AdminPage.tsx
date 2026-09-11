@@ -13,18 +13,15 @@ import {
   nextQuestionId,
 } from "../utils/answerKey";
 
-type Tab = "dashboard" | "tests" | "editor" | "users" | "attempts";
+type Tab = "dashboard" | "tests" | "editor" | "pricing" | "users" | "attempts";
 type ParseResult = Awaited<ReturnType<typeof api.adminParsePdf>>;
 
 const EMPTY_META = {
   id: "",
-  title: "",
   titleKz: "",
   section: "",
   subject: "",
   durationMinutes: 50,
-  isFree: true,
-  priceTenge: "" as string,
   description: "",
 };
 
@@ -53,6 +50,12 @@ export function AdminPage() {
   const [openPreviewId, setOpenPreviewId] = useState<number | null>(1);
   const [addType, setAddType] = useState<QuestionType>("single_choice");
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
+  const [pricing, setPricing] = useState({
+    trialEnabled: true,
+    singlePriceTenge: "500",
+    bundlePriceTenge: "1250",
+  });
+  const [savingPricing, setSavingPricing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -61,6 +64,14 @@ export function AdminPage() {
       if (tab === "attempts") setAttempts((await api.adminAttempts()).attempts);
       if (tab === "tests" || tab === "editor") {
         setTests((await api.adminTests()).tests);
+      }
+      if (tab === "pricing") {
+        const p = await api.adminGetPricing();
+        setPricing({
+          trialEnabled: p.trialEnabled,
+          singlePriceTenge: String(p.singlePriceTenge),
+          bundlePriceTenge: String(p.bundlePriceTenge),
+        });
       }
     } catch (e) {
       toast("error", e instanceof Error ? e.message : "Ошибка загрузки");
@@ -137,13 +148,10 @@ export function AdminPage() {
       const d = result.draft;
       setPreviewMeta({
         id: d.id || crypto.randomUUID(),
-        title: d.title,
-        titleKz: d.titleKz,
+        titleKz: d.titleKz || d.title,
         section: d.section,
         subject: d.subject,
         durationMinutes: d.durationMinutes,
-        isFree: d.isFree,
-        priceTenge: d.priceTenge != null ? String(d.priceTenge) : "",
         description: d.description ?? "",
       });
       setOpenPreviewId(
@@ -176,21 +184,19 @@ export function AdminPage() {
           `Отметьте правильные ответы у вопросов: ${missing.join(", ")}`,
         );
       }
-      if (!previewMeta.title.trim()) throw new Error("Укажите название теста");
+      if (!previewMeta.titleKz.trim()) throw new Error("Укажите название на казахском");
       if (!previewMeta.subject.trim()) throw new Error("Укажите предмет");
       const id = previewMeta.id.trim() || crypto.randomUUID();
+      const titleKz = previewMeta.titleKz.trim();
       const payload: TestDefinition & { description?: string } = {
         id,
-        title: previewMeta.title.trim(),
-        titleKz: previewMeta.titleKz.trim() || previewMeta.title.trim(),
+        title: titleKz,
+        titleKz,
         section: previewMeta.section.trim() || previewMeta.subject.trim(),
         subject: previewMeta.subject.trim(),
         examType: "ENT",
         durationMinutes: Number(previewMeta.durationMinutes) || 50,
-        isFree: previewMeta.isFree,
-        priceTenge: previewMeta.priceTenge
-          ? Number(previewMeta.priceTenge)
-          : undefined,
+        isFree: true,
         description: previewMeta.description,
         questionCount: draftQuestions.length,
         questions: draftQuestions,
@@ -199,7 +205,7 @@ export function AdminPage() {
       setPreviewMeta((m) => ({ ...m, id }));
       toast(
         "ok",
-        `Тест «${payload.title}» сохранён · ${payload.questions.length} вопросов`,
+        `Тест «${payload.titleKz}» сохранён · ${payload.questions.length} вопросов`,
       );
       setTests((await api.adminTests()).tests);
     } catch (err) {
@@ -237,20 +243,38 @@ export function AdminPage() {
       setDraftQuestions(test.questions);
       setPreviewMeta({
         id: test.id,
-        title: test.title,
-        titleKz: test.titleKz,
+        titleKz: test.titleKz || test.title,
         section: test.section,
         subject: test.subject,
         durationMinutes: test.durationMinutes,
-        isFree: test.isFree,
-        priceTenge: test.priceTenge != null ? String(test.priceTenge) : "",
         description: test.description ?? "",
       });
       setOpenPreviewId(test.questions[0]?.id ?? null);
       setTab("editor");
-      toast("ok", `Тест «${test.title}» открыт`);
+      toast("ok", `Тест «${test.titleKz || test.title}» открыт`);
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Не удалось открыть тест");
+    }
+  }
+
+  async function handleSavePricing() {
+    setSavingPricing(true);
+    try {
+      const saved = await api.adminSavePricing({
+        trialEnabled: pricing.trialEnabled,
+        singlePriceTenge: Number(pricing.singlePriceTenge) || 0,
+        bundlePriceTenge: Number(pricing.bundlePriceTenge) || 0,
+      });
+      setPricing({
+        trialEnabled: saved.trialEnabled,
+        singlePriceTenge: String(saved.singlePriceTenge),
+        bundlePriceTenge: String(saved.bundlePriceTenge),
+      });
+      toast("ok", "Цены ҰБТ сохранены и показаны на главной");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Ошибка сохранения цен");
+    } finally {
+      setSavingPricing(false);
     }
   }
 
@@ -282,6 +306,7 @@ export function AdminPage() {
               ["dashboard", "Обзор"],
               ["tests", "Тесты"],
               ["editor", "Создать"],
+              ["pricing", "Цены"],
               ["users", "Пользователи"],
               ["attempts", "Результаты"],
             ] as const
@@ -415,7 +440,6 @@ export function AdminPage() {
                       <th>Название</th>
                       <th>Предмет</th>
                       <th>Вопросов</th>
-                      <th>Доступ</th>
                       <th>Действия</th>
                     </tr>
                   </thead>
@@ -423,11 +447,10 @@ export function AdminPage() {
                     {tests.map((t) => (
                       <tr key={t.id}>
                         <td>
-                          <strong>{t.title}</strong>
+                          <strong>{t.titleKz || t.title}</strong>
                         </td>
                         <td>{t.subject}</td>
                         <td>{t.questionCount}</td>
-                        <td>{t.isFree !== false ? "бесплатно" : `${t.priceTenge ?? 0} ₸`}</td>
                         <td>
                           <div className="admin-table__actions">
                             <button
@@ -445,7 +468,7 @@ export function AdminPage() {
                             <button
                               type="button"
                               className="danger"
-                              onClick={() => void handleDelete(t.id, t.title)}
+                              onClick={() => void handleDelete(t.id, t.titleKz || t.title)}
                             >
                               Удалить
                             </button>
@@ -548,16 +571,6 @@ export function AdminPage() {
                 <h2>Карточка теста</h2>
                 <div className="admin-meta-form">
                   <label>
-                    Название (RU)
-                    <input
-                      value={previewMeta.title}
-                      placeholder="ЕНТ — География"
-                      onChange={(e) =>
-                        setPreviewMeta((m) => ({ ...m, title: e.target.value }))
-                      }
-                    />
-                  </label>
-                  <label>
                     Название (KZ)
                     <input
                       value={previewMeta.titleKz}
@@ -594,33 +607,6 @@ export function AdminPage() {
                         setPreviewMeta((m) => ({
                           ...m,
                           durationMinutes: Number(e.target.value) || 50,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label className="admin-meta-form__check">
-                    <input
-                      type="checkbox"
-                      checked={previewMeta.isFree}
-                      onChange={(e) =>
-                        setPreviewMeta((m) => ({
-                          ...m,
-                          isFree: e.target.checked,
-                        }))
-                      }
-                    />
-                    Бесплатный
-                  </label>
-                  <label>
-                    Цена ₸
-                    <input
-                      value={previewMeta.priceTenge}
-                      disabled={previewMeta.isFree}
-                      placeholder="0"
-                      onChange={(e) =>
-                        setPreviewMeta((m) => ({
-                          ...m,
-                          priceTenge: e.target.value,
                         }))
                       }
                     />
@@ -722,6 +708,80 @@ export function AdminPage() {
                 </button>
               </div>
             )}
+          </section>
+        )}
+
+        {tab === "pricing" && (
+          <section>
+            <div className="admin-page-head">
+              <div>
+                <h1>Цены ҰБТ</h1>
+                <p>Общий прайс на полный пробный экзамен, не на отдельный предмет</p>
+              </div>
+            </div>
+            <div className="admin-preview">
+              <p className="admin-hint">
+                Ученик покупает целый ҰБТ. Эти пакеты сразу видны в блоке «Бағалар» на главной.
+              </p>
+              <div className="admin-meta-form">
+                <label className="admin-meta-form__check">
+                  <input
+                    type="checkbox"
+                    checked={pricing.trialEnabled}
+                    onChange={(e) =>
+                      setPricing((p) => ({ ...p, trialEnabled: e.target.checked }))
+                    }
+                  />
+                  1 пробный бесплатно
+                </label>
+                <label>
+                  1 тест, ₸
+                  <input
+                    type="number"
+                    min={0}
+                    value={pricing.singlePriceTenge}
+                    onChange={(e) =>
+                      setPricing((p) => ({ ...p, singlePriceTenge: e.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  Пакет 2+1, ₸
+                  <input
+                    type="number"
+                    min={0}
+                    value={pricing.bundlePriceTenge}
+                    onChange={(e) =>
+                      setPricing((p) => ({ ...p, bundlePriceTenge: e.target.value }))
+                    }
+                  />
+                </label>
+              </div>
+              <div className="admin-pricing-preview">
+                {pricing.trialEnabled && (
+                  <div>
+                    <strong>1 пробный</strong>
+                    <span>0 ₸</span>
+                  </div>
+                )}
+                <div>
+                  <strong>1 тест</strong>
+                  <span>{pricing.singlePriceTenge || 0} ₸</span>
+                </div>
+                <div>
+                  <strong>2+1</strong>
+                  <span>{pricing.bundlePriceTenge || 0} ₸</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                disabled={savingPricing}
+                onClick={() => void handleSavePricing()}
+              >
+                {savingPricing ? "Сохранение..." : "Сохранить цены"}
+              </button>
+            </div>
           </section>
         )}
 

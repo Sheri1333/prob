@@ -61,6 +61,14 @@ export interface TestDoc {
   updatedAt: Date;
 }
 
+export interface SettingsDoc {
+  _id: string;
+  trialEnabled?: boolean;
+  singlePriceTenge?: number;
+  bundlePriceTenge?: number;
+  updatedAt?: Date;
+}
+
 export interface AttemptDoc {
   _id: ObjectId;
   userId: ObjectId | null;
@@ -180,6 +188,10 @@ export function tests(): Collection<TestDoc> {
 
 export function attempts(): Collection<AttemptDoc> {
   return requireDb().collection<AttemptDoc>("attempts");
+}
+
+export function settings(): Collection<SettingsDoc> {
+  return requireDb().collection<SettingsDoc>("settings");
 }
 
 export function publicUser(doc: UserDoc) {
