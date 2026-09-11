@@ -2,9 +2,10 @@
  * Seed one full ENT variant into MongoDB.
  * Run: npx tsx src/seedEnt.ts  (from server/)
  */
-import { connectDb, closeDb, tests, type TestDoc } from "./db.js";
+import { connectDb, closeDb, tests, users, type TestDoc } from "./db.js";
 import { newTestId } from "./ids.js";
 import type { Question } from "./scoring.js";
+import bcrypt from "bcryptjs";
 
 function single(
   id: number,
@@ -281,8 +282,26 @@ async function upsertBySubject(spec: SeedSpec): Promise<string> {
   return id;
 }
 
+async function ensureAdmin(): Promise<void> {
+  const email = "admin@prob.kz";
+  const existing = await users().findOne({ email });
+  if (existing) {
+    console.log(`Admin already exists: ${email}`);
+    return;
+  }
+  await users().insertOne({
+    email,
+    passwordHash: bcrypt.hashSync("admin123", 10),
+    name: "Admin",
+    role: "admin",
+    createdAt: new Date(),
+  });
+  console.log(`Admin created: ${email} / admin123`);
+}
+
 async function main() {
   await connectDb();
+  await ensureAdmin();
   console.log("Seeding ENT variant 1...");
   for (const spec of SPECS) {
     const id = await upsertBySubject(spec);

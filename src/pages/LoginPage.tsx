@@ -36,7 +36,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="page page--center auth-page">
+    <div className="auth-page">
       <div className="auth-page__toggle">
         <ThemeToggle />
       </div>
@@ -115,7 +115,7 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="page page--center auth-page">
+    <div className="auth-page">
       <div className="auth-page__toggle">
         <ThemeToggle />
       </div>

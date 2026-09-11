@@ -121,9 +121,10 @@ select {
 .page--center {
   min-height: 60vh;
   display: grid;
-  place-content: center;
+  place-items: center;
   gap: 1rem;
   text-align: center;
+}
 }
 
 .site-header {
@@ -1633,14 +1634,22 @@ span.landing-feature__icon {
 
 .auth-page {
   position: relative;
+  width: 100%;
+  max-width: none;
   min-height: 100vh;
-  background: radial-gradient(circle at 15% 0%, rgba(84, 102, 245, 0.05), transparent 40%);
+  margin: 0;
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 15% 0%, rgba(84, 102, 245, 0.08), transparent 42%);
 }
 
 .auth-page__toggle {
-  position: absolute;
+  position: fixed;
   top: 1.25rem;
   right: 1.25rem;
+  z-index: 5;
 }
 
 .profile-head {
@@ -1778,6 +1787,7 @@ span.landing-feature__icon {
 .auth-card {
   position: relative;
   width: min(400px, 100%);
+  box-sizing: border-box;
   background: var(--white);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-lg);
@@ -1785,12 +1795,14 @@ span.landing-feature__icon {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  text-align: left;
   box-shadow: var(--shadow-lg);
 }
 
 .auth-card h1 {
   margin: 0 0 0.25rem;
   font-size: 1.4rem;
+  text-align: center;
 }
 
 .auth-card label {
@@ -1806,6 +1818,7 @@ span.landing-feature__icon {
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  background: var(--bg);
   font-size: 0.95rem;
   font-weight: 400;
   color: var(--text);
@@ -1873,6 +1886,7 @@ span.landing-feature__icon {
   margin: 0;
   font-size: 0.9rem;
   color: var(--text-muted);
+  text-align: center;
 }
 
 .auth-card__footer a {
@@ -1883,6 +1897,7 @@ span.landing-feature__icon {
 .auth-card__back {
   font-size: 0.85rem;
   color: var(--text-faint);
+  text-align: center;
 }
 
 .admin-page {
