@@ -181,16 +181,20 @@ select {
 }
 
 .hero h1 {
-  margin: 0 0 0.5rem;
-  font-size: 1.65rem;
-  text-transform: uppercase;
+  margin: 0 0 0.45rem;
+  font-size: 1.7rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: none;
 }
 
 .hero p {
   margin: 0;
-  max-width: 40rem;
+  max-width: 36rem;
   opacity: 0.92;
-  font-size: 0.98rem;
+  font-size: 1.02rem;
+  line-height: 1.45;
+  font-weight: 500;
 }
 
 .catalog h2 {
