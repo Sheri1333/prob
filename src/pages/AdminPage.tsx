@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ToastHost, useToasts } from "../components/Toast";
+import { ThemeToggle } from "../components/ThemeToggle";
 import type { Question, QuestionType, TestDefinition } from "../types/test";
 import {
   createBlankQuestion,
@@ -371,6 +372,7 @@ export function AdminPage() {
           ))}
         </nav>
         <div className="admin-sidebar__foot">
+          <ThemeToggle />
           {user && <span className="admin-sidebar__user">{user.email}</span>}
           <Link to="/">На сайт</Link>
           {user && (

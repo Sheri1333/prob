@@ -33,6 +33,10 @@ export function App() {
               element={<ExamPage lang={lang} onToggleLang={toggleLang} />}
             />
             <Route
+              path="/exam/results/:sessionId"
+              element={<ExamResultsPage lang={lang} />}
+            />
+            <Route
               path="/exam/results"
               element={<ExamResultsPage lang={lang} />}
             />

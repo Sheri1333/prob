@@ -4,7 +4,6 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ThemeToggle } from "../components/ThemeToggle";
-import { translateSubject } from "../i18n/subjects";
 import { t } from "../i18n/strings";
 import type { Lang } from "../i18n/strings";
 import { entScoreToGrade } from "../utils/testUtils";
@@ -21,8 +20,8 @@ function initials(name: string): string {
 
 export function ProfilePage({ lang }: ProfilePageProps) {
   const { user, loading, isAdmin, logout } = useAuth();
-  const [attempts, setAttempts] = useState<
-    Awaited<ReturnType<typeof api.myAttempts>>["attempts"]
+  const [sessions, setSessions] = useState<
+    Awaited<ReturnType<typeof api.examHistory>>["sessions"]
   >([]);
   const [error, setError] = useState("");
   const [loadingAttempts, setLoadingAttempts] = useState(true);
@@ -31,21 +30,21 @@ export function ProfilePage({ lang }: ProfilePageProps) {
   useEffect(() => {
     if (!user) return;
     api
-      .myAttempts()
-      .then(({ attempts: list }) => setAttempts(list))
+      .examHistory()
+      .then(({ sessions: list }) => setSessions(list))
       .catch((e) => setError(e instanceof Error ? e.message : "Ошибка"))
       .finally(() => setLoadingAttempts(false));
   }, [user]);
 
   const stats = useMemo(() => {
-    if (attempts.length === 0) return null;
-    const grades = attempts.map((a) => entScoreToGrade(a.score, a.maxScore));
+    if (sessions.length === 0) return null;
+    const grades = sessions.map((a) => entScoreToGrade(a.score, a.maxScore));
     const avgGrade = Math.round(
       grades.reduce((sum, g) => sum + g, 0) / grades.length,
     );
     const bestGrade = Math.max(...grades);
-    return { count: attempts.length, avgGrade, bestGrade };
-  }, [attempts]);
+    return { count: sessions.length, avgGrade, bestGrade };
+  }, [sessions]);
 
   if (loading) return <div className="page page--center">Загрузка...</div>;
   if (!user) return <Navigate to="/login" replace state={{ from: "/profile" }} />;
@@ -107,25 +106,33 @@ export function ProfilePage({ lang }: ProfilePageProps) {
       </section>
 
       <section className="profile-history">
-        <h2>{lang === "kz" ? "Тесттер тарихы" : "История тестов"}</h2>
+        <h2>{lang === "kz" ? "ҰБТ тарихы" : "История ЕНТ"}</h2>
         {loadingAttempts ? (
           <p>Загрузка...</p>
-        ) : attempts.length === 0 ? (
+        ) : sessions.length === 0 ? (
           <p className="admin-empty">
-            {lang === "kz" ? "Әзірге өткендер жоқ." : "Пока нет прохождений."}{" "}
+            {lang === "kz" ? "Әзірге өткен ҰБТ жоқ." : "Пока нет прохождений ЕНТ."}{" "}
             <Link to="/">
-              {lang === "kz" ? "Каталогтан тест таңдау" : "Выбрать тест в каталоге"}
+              {lang === "kz" ? "Пробный бастау" : "Начать пробный"}
             </Link>
           </p>
         ) : (
           <div className="profile-history__list">
-            {attempts.map((a) => {
+            {sessions.map((a) => {
               const grade = entScoreToGrade(a.score, a.maxScore);
               return (
-                <div key={a.id} className="profile-history__item">
+                <Link
+                  key={a.sessionId}
+                  to={`/exam/results/${a.sessionId}`}
+                  className="profile-history__item"
+                >
                   <div className="profile-history__info">
-                    <strong>{a.title}</strong>
-                    <span>{translateSubject(a.subject, lang)}</span>
+                    <strong>{lang === "kz" ? "ҰБТ" : "ЕНТ"}</strong>
+                    <span>
+                      {a.sectionCount}{" "}
+                      {lang === "kz" ? "бөлім" : "разделов"} ·{" "}
+                      {new Date(a.finishedAt).toLocaleDateString("ru-RU")}
+                    </span>
                   </div>
                   <div className="profile-history__score">
                     <span
@@ -138,11 +145,10 @@ export function ProfilePage({ lang }: ProfilePageProps) {
                       {grade} {t("entGrade", lang)}
                     </span>
                     <span className="profile-history__meta">
-                      {a.score}/{a.maxScore} ·{" "}
-                      {new Date(a.finishedAt).toLocaleDateString("ru-RU")}
+                      {a.score}/{a.maxScore}
                     </span>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>

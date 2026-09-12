@@ -151,6 +151,25 @@ export const api = {
     });
   },
 
+  examHistory() {
+    return request<{
+      sessions: Array<{
+        sessionId: string;
+        score: number;
+        maxScore: number;
+        sectionCount: number;
+        startedAt: string;
+        finishedAt: string;
+      }>;
+    }>("/exams/history");
+  },
+
+  examSession(sessionId: string) {
+    return request<ExamSubmitResponse>(
+      "/exams/sessions/" + encodeURIComponent(sessionId),
+    );
+  },
+
   getTest(id: string) {
     return request<{ test: TestDefinition }>("/tests/" + encodeURIComponent(id));
   },

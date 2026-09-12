@@ -1,4 +1,7 @@
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { api } from "../api/client";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { translateSubject } from "../i18n/subjects";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
@@ -10,14 +13,47 @@ interface ExamResultsPageProps {
 }
 
 export function ExamResultsPage({ lang }: ExamResultsPageProps) {
+  const { sessionId } = useParams();
   const location = useLocation();
-  const state = location.state as ExamSubmitResponse | null;
+  const fromState = location.state as ExamSubmitResponse | null;
+  const [state, setState] = useState<ExamSubmitResponse | null>(
+    fromState?.sessionId && (!sessionId || fromState.sessionId === sessionId)
+      ? fromState
+      : null,
+  );
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(!state && Boolean(sessionId));
+
+  useEffect(() => {
+    if (state || !sessionId) return;
+    let cancelled = false;
+    api
+      .examSession(sessionId)
+      .then((data) => {
+        if (!cancelled) setState(data);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Нәтиже табылмады");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, state]);
+
+  if (loading) {
+    return <div className="page page--center">Загрузка...</div>;
+  }
 
   if (!state?.sections?.length) {
     return (
       <div className="page page--center">
-        <p>{t("results", lang)} жоқ</p>
-        <Link to="/">{t("backToCatalog", lang)}</Link>
+        <p>{error || `${t("results", lang)} жоқ`}</p>
+        <Link to="/profile">{lang === "kz" ? "Тарихқа" : "К истории"}</Link>
       </div>
     );
   }
@@ -31,6 +67,7 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
           {lang === "kz" ? "ТЕСТІЛЕУ > ТЕСТІЛЕУДІ АЯҚТАУ" : "ТЕСТИРОВАНИЕ > ЗАВЕРШЕНИЕ"}
         </div>
         <div className="ent-results__actions">
+          <ThemeToggle />
           <Link to="/profile" className="ent-results__history">
             {lang === "kz" ? "Тарих" : "История"}
           </Link>
@@ -167,8 +204,8 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
       })}
 
       <div className="results-page__links">
-        <Link to="/" className="results-page__back">
-          {t("backToCatalog", lang)}
+        <Link to="/profile" className="results-page__back">
+          {lang === "kz" ? "Тарихқа қайту" : "К истории"}
         </Link>
       </div>
     </div>

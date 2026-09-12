@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { ObjectId } from "mongodb";
-import { attempts, tests, type TestDoc } from "../db.js";
-import { optionalAuth, type AuthedRequest } from "../auth.js";
+import { attempts, tests, type AttemptDoc, type TestDoc } from "../db.js";
+import { authRequired, optionalAuth, type AuthedRequest } from "../auth.js";
 import { newTestId } from "../ids.js";
 import {
   detectEntBlock,
@@ -19,6 +19,136 @@ export const examsRouter = Router();
 
 examsRouter.get("/pricing", async (_req, res) => {
   res.json(await getPricing());
+});
+
+function sectionOrder(subject: string): number {
+  const block = detectEntBlock(subject);
+  if (block === "history") return 0;
+  if (block === "reading") return 1;
+  if (block === "math_literacy") return 2;
+  return 3;
+}
+
+function answerLabelsFrom(
+  questions: TestDoc["questions"],
+  answers: Record<string, unknown>,
+): Record<number, string> {
+  const labels: Record<number, string> = {};
+  for (const q of questions) {
+    const ans = answers[String(q.id)];
+    if (ans === undefined) {
+      labels[q.id] = "";
+      continue;
+    }
+    if (typeof ans === "string") labels[q.id] = ans;
+    else if (Array.isArray(ans)) labels[q.id] = ans.join(",");
+    else if (ans && typeof ans === "object") {
+      labels[q.id] = Object.values(ans as Record<string, string>).join(",");
+    } else labels[q.id] = "";
+  }
+  return labels;
+}
+
+async function sessionPayload(sessionId: string, rows: AttemptDoc[]) {
+  const testIds = [...new Set(rows.map((r) => r.testId))];
+  const testDocs = await tests()
+    .find({ _id: { $in: testIds } })
+    .toArray();
+  const byId = new Map(testDocs.map((t) => [t._id, t]));
+
+  const sections = [...rows]
+    .map((row) => {
+      const test = byId.get(row.testId);
+      if (!test) return null;
+      const scored = scoreTest(
+        test.questions,
+        (row.answers ?? {}) as Record<string, AnswerValue>,
+      );
+      return {
+        attemptId: row._id.toHexString(),
+        testId: test._id,
+        subject: test.subject,
+        title: test.titleKz || test.title,
+        titleKz: test.titleKz || test.title,
+        score: row.score,
+        maxScore: row.maxScore,
+        results: scored.results,
+        answerLabels: answerLabelsFrom(test.questions, row.answers ?? {}),
+        questionIds: test.questions.map((q) => q.id),
+        questionCount: test.questions.length,
+      };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null)
+    .sort((a, b) => sectionOrder(a.subject) - sectionOrder(b.subject));
+
+  const score = sections.reduce((sum, s) => sum + s.score, 0);
+  const maxScore = sections.reduce((sum, s) => sum + s.maxScore, 0);
+  const startedAt = rows[0]?.startedAt ?? new Date();
+  const finishedAt = rows[0]?.finishedAt ?? new Date();
+
+  return {
+    sessionId,
+    score,
+    maxScore,
+    startedAt: startedAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
+    sections,
+  };
+}
+
+examsRouter.get("/history", authRequired, async (req: AuthedRequest, res) => {
+  const userId = new ObjectId(req.user!.id);
+  const rows = await attempts()
+    .find({ userId, sessionId: { $exists: true, $nin: [null, ""] } })
+    .sort({ finishedAt: -1 })
+    .toArray();
+
+  const groups = new Map<string, AttemptDoc[]>();
+  for (const row of rows) {
+    const id = row.sessionId;
+    if (!id) continue;
+    const list = groups.get(id) ?? [];
+    list.push(row);
+    groups.set(id, list);
+  }
+
+  const sessions = [...groups.entries()]
+    .map(([sessionId, list]) => {
+      const score = list.reduce((sum, r) => sum + r.score, 0);
+      const maxScore = list.reduce((sum, r) => sum + r.maxScore, 0);
+      const finishedAt = list.reduce(
+        (latest, r) => (r.finishedAt > latest ? r.finishedAt : latest),
+        list[0].finishedAt,
+      );
+      const startedAt = list.reduce(
+        (earliest, r) => (r.startedAt < earliest ? r.startedAt : earliest),
+        list[0].startedAt,
+      );
+      return {
+        sessionId,
+        score,
+        maxScore,
+        sectionCount: list.length,
+        startedAt: startedAt.toISOString(),
+        finishedAt: finishedAt.toISOString(),
+      };
+    })
+    .sort((a, b) => +new Date(b.finishedAt) - +new Date(a.finishedAt));
+
+  res.json({ sessions });
+});
+
+examsRouter.get("/sessions/:sessionId", authRequired, async (req: AuthedRequest, res) => {
+  const sessionId = req.params.sessionId;
+  const userId = new ObjectId(req.user!.id);
+  const rows = await attempts()
+    .find({ sessionId, userId })
+    .toArray();
+  if (rows.length === 0) {
+    res.status(404).json({ error: "Сессия не найдена" });
+    return;
+  }
+  res.json(await sessionPayload(sessionId, rows));
 });
 
 function pickVariant(

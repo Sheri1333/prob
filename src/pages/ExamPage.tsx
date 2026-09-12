@@ -140,7 +140,7 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
       });
       rememberUsedVariants(draft.usedTestIds);
       clearExamDraft();
-      navigate("/exam/results", { state: result });
+      navigate(`/exam/results/${result.sessionId}`, { state: result });
     } catch (e) {
       finishingRef.current = false;
       setFinishing(false);

@@ -137,6 +137,7 @@ export async function connectDb(): Promise<Db> {
   await database.collection<AttemptDoc>("attempts").createIndex({ userId: 1 });
   await database.collection<AttemptDoc>("attempts").createIndex({ testId: 1 });
   await database.collection<AttemptDoc>("attempts").createIndex({ finishedAt: -1 });
+  await database.collection<AttemptDoc>("attempts").createIndex({ sessionId: 1 });
 
   await migrateTestIdsToUuid(database);
 
