@@ -5,6 +5,8 @@ import { api, type EntPricing } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnimatedNumber } from "../components/AnimatedNumber";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { OyuOrnament } from "../components/OyuOrnament";
+import { SiteFooter } from "../components/SiteFooter";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { ToastHost, useToasts } from "../components/Toast";
 import { translateSubject } from "../i18n/subjects";
@@ -225,20 +227,23 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       </header>
 
       <section className="hero">
-        <h1>
-          {user
-            ? lang === "kz"
-              ? `Сәлем, ${user.name.split(/\s+/)[0]}!`
-              : `Привет, ${user.name.split(/\s+/)[0]}!`
-            : lang === "kz"
-              ? "Сәлем!"
-              : "Привет!"}
-        </h1>
-        <p>
-          {lang === "kz"
-            ? "Талапкер — ҰБТ-ға дайындық сервисі. Дайындал бізбен бірге."
-            : "Талапкер — сервис подготовки к ЕНТ. Готовься вместе с нами."}
-        </p>
+        <div className="hero__copy">
+          <h1>
+            {user
+              ? lang === "kz"
+                ? `Сәлем, ${user.name.split(/\s+/)[0]}!`
+                : `Привет, ${user.name.split(/\s+/)[0]}!`
+              : lang === "kz"
+                ? "Сәлем!"
+                : "Привет!"}
+          </h1>
+          <p>
+            {lang === "kz"
+              ? "Талапкер — ҰБТ-ға дайындық сервисі. Дайындал бізбен бірге."
+              : "Талапкер — сервис подготовки к ЕНТ. Готовься вместе с нами."}
+          </p>
+        </div>
+        <OyuOrnament className="hero__oyu" />
       </section>
 
       {error && (
@@ -560,6 +565,8 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           </article>
         </div>
       </section>
+
+      <SiteFooter lang={lang} />
 
       {confirmLogout && (
         <ConfirmDialog

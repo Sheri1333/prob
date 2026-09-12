@@ -8,6 +8,7 @@ import { CatalogPage } from "./pages/CatalogPage";
 import { ExamPage } from "./pages/ExamPage";
 import { ExamResultsPage } from "./pages/ExamResultsPage";
 import { LoginPage, RegisterPage } from "./pages/LoginPage";
+import { LegalPage } from "./pages/LegalPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ResultsPage } from "./pages/ResultsPage";
 import { TestPage } from "./pages/TestPage";
@@ -24,6 +25,12 @@ export function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<CatalogPage lang={lang} />} />
+            <Route path="/faq" element={<LegalPage lang={lang} kind="faq" />} />
+            <Route path="/terms" element={<LegalPage lang={lang} kind="terms" />} />
+            <Route
+              path="/privacy"
+              element={<LegalPage lang={lang} kind="privacy" />}
+            />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/profile" element={<ProfilePage lang={lang} />} />
