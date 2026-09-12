@@ -300,20 +300,10 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         )}
 
       <section className="pricing">
-        <h2 className="landing-section-title reveal reveal--title">
-          {lang === "kz" ? "Бағалар" : "Цены"}
-        </h2>
-        <p className="pricing__lead reveal">
-          {lang === "kz"
-            ? "Баға толық ҰБТ үшін. Жеке пән сатылмайды."
-            : "Цена за полный ЕНТ. Отдельные предметы не продаются."}
-        </p>
+        <h2 className="landing-section-title reveal reveal--title">Прайсинг</h2>
         <div className="pricing__grid">
           {pricing.trialEnabled && (
             <div className="pricing-card reveal">
-              <span className="pricing-card__badge">
-                {lang === "kz" ? "Қазір" : "Сейчас"}
-              </span>
               <h3 className="pricing-card__name">
                 {lang === "kz" ? "1 пробный" : "1 пробный"}
               </h3>
@@ -347,9 +337,6 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           )}
 
           <div className="pricing-card reveal">
-            <span className="pricing-card__badge">
-              {lang === "kz" ? "1 тест" : "1 тест"}
-            </span>
             <h3 className="pricing-card__name">
               {lang === "kz" ? "Толық ҰБТ" : "Полный ЕНТ"}
             </h3>
@@ -378,34 +365,36 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           </div>
 
           <div className="pricing-card pricing-card--featured reveal">
-            <span className="pricing-card__badge">
-              {lang === "kz" ? "Тиімді" : "Выгодно"}
+            <span className="pricing-card__ribbon">
+              {lang === "kz" ? "Тиімді" : "Тиімді"}
             </span>
-            <h3 className="pricing-card__name">2+1</h3>
-            <div className="pricing-card__price">
-              {pricing.bundlePriceTenge} ₸
+            <div className="pricing-card__inner">
+              <h3 className="pricing-card__name">2+1</h3>
+              <div className="pricing-card__price">
+                {pricing.bundlePriceTenge} ₸
+              </div>
+              <ul className="pricing-card__list">
+                <li className="ok">
+                  <span className="material-symbols-outlined">check_circle</span>
+                  {lang === "kz"
+                    ? "3 толық ҰБТ — екеуінің бағасына"
+                    : "3 полных ЕНТ по цене двух"}
+                </li>
+                <li className="ok">
+                  <span className="material-symbols-outlined">check_circle</span>
+                  {lang === "kz"
+                    ? "Қайта тапсырып, баллды өсіріңіз"
+                    : "Пересдайте и поднимите балл"}
+                </li>
+              </ul>
+              <button
+                type="button"
+                className="test-card__cta pricing-card__cta"
+                onClick={buySoon}
+              >
+                {lang === "kz" ? "Сатып алу" : "Купить"}
+              </button>
             </div>
-            <ul className="pricing-card__list">
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz"
-                  ? "3 толық ҰБТ — екеуінің бағасына"
-                  : "3 полных ЕНТ по цене двух"}
-              </li>
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz"
-                  ? "Қайта тапсырып, баллды өсіріңіз"
-                  : "Пересдайте и поднимите балл"}
-              </li>
-            </ul>
-            <button
-              type="button"
-              className="test-card__cta pricing-card__cta"
-              onClick={buySoon}
-            >
-              {lang === "kz" ? "Сатып алу" : "Купить"}
-            </button>
           </div>
         </div>
       </section>
