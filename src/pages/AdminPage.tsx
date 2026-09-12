@@ -13,8 +13,9 @@ import {
   nextQuestionId,
 } from "../utils/answerKey";
 
-type Tab = "dashboard" | "tests" | "editor" | "pricing" | "users" | "attempts";
+type Tab = "dashboard" | "tests" | "editor" | "pricing" | "users";
 type ParseResult = Awaited<ReturnType<typeof api.adminParsePdf>>;
+type AdminUser = Awaited<ReturnType<typeof api.adminUsers>>["users"][number];
 
 const EMPTY_META = {
   id: "",
@@ -56,12 +57,15 @@ export function AdminPage() {
     bundlePriceTenge: "1250",
   });
   const [savingPricing, setSavingPricing] = useState(false);
+  const [testQuery, setTestQuery] = useState("");
+  const [testSubject, setTestSubject] = useState("");
+  const [testQuestions, setTestQuestions] = useState("");
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
 
   const load = useCallback(async () => {
     try {
       if (tab === "dashboard") setStats(await api.adminStats());
       if (tab === "users") setUsers((await api.adminUsers()).users);
-      if (tab === "attempts") setAttempts((await api.adminAttempts()).attempts);
       if (tab === "tests" || tab === "editor") {
         setTests((await api.adminTests()).tests);
       }
@@ -87,6 +91,36 @@ export function AdminPage() {
     [draftQuestions],
   );
   const editing = draftQuestions.length > 0;
+
+  const testSubjects = useMemo(
+    () => [...new Set(tests.map((t) => t.subject).filter(Boolean))].sort(),
+    [tests],
+  );
+  const testQuestionCounts = useMemo(
+    () =>
+      [...new Set(tests.map((t) => t.questionCount))].sort((a, b) => a - b),
+    [tests],
+  );
+  const filteredTests = useMemo(() => {
+    const q = testQuery.trim().toLowerCase();
+    return tests.filter((t) => {
+      if (testSubject && t.subject !== testSubject) return false;
+      if (testQuestions && String(t.questionCount) !== testQuestions) {
+        return false;
+      }
+      if (!q) return true;
+      const hay = [
+        t.titleKz,
+        t.title,
+        t.subject,
+        t.section,
+        String(t.questionCount),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [tests, testQuery, testSubject, testQuestions]);
 
   if (loading) {
     return <div className="page page--center">Загрузка...</div>;
@@ -278,6 +312,19 @@ export function AdminPage() {
     }
   }
 
+  async function openUserResults(u: AdminUser) {
+    setSelectedUser(u);
+    setAttempts([]);
+    try {
+      setAttempts((await api.adminAttempts({ userId: u.id })).attempts);
+    } catch (err) {
+      toast(
+        "error",
+        err instanceof Error ? err.message : "Не удалось загрузить результаты",
+      );
+    }
+  }
+
   return (
     <div className="admin-page">
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
@@ -308,14 +355,16 @@ export function AdminPage() {
               ["editor", "Создать"],
               ["pricing", "Цены"],
               ["users", "Пользователи"],
-              ["attempts", "Результаты"],
             ] as const
           ).map(([id, label]) => (
             <button
               key={id}
               type="button"
               className={tab === id ? "active" : ""}
-              onClick={() => setTab(id)}
+              onClick={() => {
+                setSelectedUser(null);
+                setTab(id);
+              }}
             >
               {label}
             </button>
@@ -358,8 +407,7 @@ export function AdminPage() {
               </div>
             </div>
 
-            <div className="admin-grid-2">
-              <div className="admin-panel">
+            <div className="admin-panel">
                 <h2>Недавние регистрации</h2>
                 <table className="admin-table">
                   <thead>
@@ -372,7 +420,22 @@ export function AdminPage() {
                   </thead>
                   <tbody>
                     {stats.recentUsers.map((u) => (
-                      <tr key={u.id}>
+                      <tr
+                        key={u.id}
+                        className="is-clickable"
+                        onClick={() => {
+                          setTab("users");
+                          void openUserResults({
+                            id: u.id,
+                            email: u.email,
+                            name: u.name,
+                            role: u.role,
+                            createdAt: u.created_at,
+                            attemptsCount: 0,
+                            avgPercent: null,
+                          });
+                        }}
+                      >
                         <td>{u.name}</td>
                         <td>{u.email}</td>
                         <td>{u.role}</td>
@@ -382,34 +445,6 @@ export function AdminPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="admin-panel">
-                <h2>Лучшие результаты</h2>
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>Ученик</th>
-                      <th>Тест</th>
-                      <th>Балл</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stats.topAttempts.map((a) => (
-                      <tr key={a.id}>
-                        <td>
-                          {a.user_name}
-                          <br />
-                          <small>{a.user_email}</small>
-                        </td>
-                        <td>{a.test_title}</td>
-                        <td>
-                          {a.score}/{a.max_score}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </section>
         )}
 
@@ -418,7 +453,9 @@ export function AdminPage() {
             <div className="admin-page-head">
               <div>
                 <h1>Тесты</h1>
-                <p>{tests.length} в каталоге</p>
+                <p>
+                  {filteredTests.length} из {tests.length} в каталоге
+                </p>
               </div>
               <button
                 type="button"
@@ -433,52 +470,89 @@ export function AdminPage() {
                 Пока нет тестов. Создайте вручную или загрузите PDF.
               </div>
             ) : (
-              <div className="admin-panel">
-                <table className="admin-table admin-table--actions">
-                  <thead>
-                    <tr>
-                      <th>Название</th>
-                      <th>Предмет</th>
-                      <th>Вопросов</th>
-                      <th>Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tests.map((t) => (
-                      <tr key={t.id}>
-                        <td>
-                          <strong>{t.titleKz || t.title}</strong>
-                        </td>
-                        <td>{t.subject}</td>
-                        <td>{t.questionCount}</td>
-                        <td>
-                          <div className="admin-table__actions">
-                            <button
-                              type="button"
-                              onClick={() => void loadTestForEdit(t.id)}
-                            >
-                              Редактировать
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleDuplicate(t.id)}
-                            >
-                              Дублировать
-                            </button>
-                            <button
-                              type="button"
-                              className="danger"
-                              onClick={() => void handleDelete(t.id, t.titleKz || t.title)}
-                            >
-                              Удалить
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+              <>
+                <div className="admin-filters">
+                  <input
+                    value={testQuery}
+                    placeholder="Поиск по названию, предмету, вопросам"
+                    onChange={(e) => setTestQuery(e.target.value)}
+                  />
+                  <select
+                    value={testSubject}
+                    onChange={(e) => setTestSubject(e.target.value)}
+                  >
+                    <option value="">Все предметы</option>
+                    {testSubjects.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </select>
+                  <select
+                    value={testQuestions}
+                    onChange={(e) => setTestQuestions(e.target.value)}
+                  >
+                    <option value="">Все по вопросам</option>
+                    {testQuestionCounts.map((n) => (
+                      <option key={n} value={String(n)}>
+                        {n} вопросов
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {filteredTests.length === 0 ? (
+                  <div className="admin-empty">Нет тестов по этому фильтру.</div>
+                ) : (
+                  <div className="admin-panel">
+                    <table className="admin-table admin-table--actions">
+                      <thead>
+                        <tr>
+                          <th>Название</th>
+                          <th>Предмет</th>
+                          <th>Вопросов</th>
+                          <th>Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredTests.map((t) => (
+                          <tr key={t.id}>
+                            <td>
+                              <strong>{t.titleKz || t.title}</strong>
+                            </td>
+                            <td>{t.subject}</td>
+                            <td>{t.questionCount}</td>
+                            <td>
+                              <div className="admin-table__actions">
+                                <button
+                                  type="button"
+                                  onClick={() => void loadTestForEdit(t.id)}
+                                >
+                                  Редактировать
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDuplicate(t.id)}
+                                >
+                                  Дублировать
+                                </button>
+                                <button
+                                  type="button"
+                                  className="danger"
+                                  onClick={() =>
+                                    void handleDelete(t.id, t.titleKz || t.title)
+                                  }
+                                >
+                                  Удалить
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </section>
         )}
@@ -787,86 +861,100 @@ export function AdminPage() {
 
         {tab === "users" && (
           <section>
-            <div className="admin-page-head">
-              <h1>Пользователи</h1>
-            </div>
-            <div className="admin-panel">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Имя</th>
-                    <th>Email</th>
-                    <th>Роль</th>
-                    <th>Регистрация</th>
-                    <th>Попыток</th>
-                    <th>Средний %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id}>
-                      <td>{u.name}</td>
-                      <td>{u.email}</td>
-                      <td>
-                        <span className={`role-badge role-badge--${u.role}`}>
-                          {u.role}
-                        </span>
-                      </td>
-                      <td>{formatDate(u.createdAt)}</td>
-                      <td>{u.attemptsCount}</td>
-                      <td>{u.avgPercent != null ? `${u.avgPercent}%` : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        {tab === "attempts" && (
-          <section>
-            <div className="admin-page-head">
-              <h1>Результаты</h1>
-            </div>
-            <div className="admin-panel">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Ученик</th>
-                    <th>Тест</th>
-                    <th>Балл</th>
-                    <th>%</th>
-                    <th>Завершено</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {attempts.map((a) => (
-                    <tr key={a.id}>
-                      <td>
-                        {a.userName}
-                        <br />
-                        <small>{a.userEmail}</small>
-                      </td>
-                      <td>
-                        {a.testTitle}
-                        <br />
-                        <small>{a.testId}</small>
-                      </td>
-                      <td>
-                        {a.score}/{a.maxScore}
-                      </td>
-                      <td>
-                        {a.maxScore
-                          ? Math.round((100 * a.score) / a.maxScore)
-                          : 0}
-                        %
-                      </td>
-                      <td>{formatDate(a.finishedAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {selectedUser ? (
+              <>
+                <div className="admin-page-head">
+                  <div>
+                    <h1>{selectedUser.name}</h1>
+                    <p>{selectedUser.email}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="admin-btn"
+                    onClick={() => setSelectedUser(null)}
+                  >
+                    К пользователям
+                  </button>
+                </div>
+                {attempts.length === 0 ? (
+                  <div className="admin-empty">У этого пользователя ещё нет результатов.</div>
+                ) : (
+                  <div className="admin-panel">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Тест</th>
+                          <th>Предмет</th>
+                          <th>Балл</th>
+                          <th>%</th>
+                          <th>Завершено</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {attempts.map((a) => (
+                          <tr key={a.id}>
+                            <td>{a.testTitle}</td>
+                            <td>{a.subject || "—"}</td>
+                            <td>
+                              {a.score}/{a.maxScore}
+                            </td>
+                            <td>
+                              {a.maxScore
+                                ? Math.round((100 * a.score) / a.maxScore)
+                                : 0}
+                              %
+                            </td>
+                            <td>{formatDate(a.finishedAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="admin-page-head">
+                  <h1>Пользователи</h1>
+                </div>
+                <div className="admin-panel">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Имя</th>
+                        <th>Email</th>
+                        <th>Роль</th>
+                        <th>Регистрация</th>
+                        <th>Попыток</th>
+                        <th>Средний %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((u) => (
+                        <tr
+                          key={u.id}
+                          className="is-clickable"
+                          onClick={() => void openUserResults(u)}
+                        >
+                          <td>{u.name}</td>
+                          <td>{u.email}</td>
+                          <td>
+                            <span className={`role-badge role-badge--${u.role}`}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td>{formatDate(u.createdAt)}</td>
+                          <td>{u.attemptsCount}</td>
+                          <td>
+                            {u.avgPercent != null ? `${u.avgPercent}%` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </section>
         )}
       </main>

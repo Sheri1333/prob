@@ -263,7 +263,7 @@ adminRouter.get("/attempts", async (req, res) => {
         finishedAt: row.finishedAt.toISOString(),
         userName: u?.name ?? "Гость",
         userEmail: u?.email ?? "—",
-        testTitle: t?.title ?? row.testId,
+        testTitle: t?.titleKz || t?.title || row.testId,
         subject: t?.subject ?? "",
       };
     }),
