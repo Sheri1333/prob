@@ -92,5 +92,9 @@ export function getAttemptsForTest(testId: string): TestAttempt[] {
 }
 
 export function entScoreToGrade(score: number, maxScore: number): number {
+  if (!maxScore) return 0;
+  if (maxScore === 140) {
+    return Math.round(Math.min(140, Math.max(0, score)));
+  }
   return Math.round((score / maxScore) * 140);
 }

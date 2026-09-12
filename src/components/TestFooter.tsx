@@ -32,7 +32,7 @@ export function TestFooter({
           disabled={currentIndex === 0 || finishing}
         >
           <span className="material-symbols-outlined">chevron_left</span>
-          {t("prevQuestion", lang)}
+          <span className="exam-footer__text">{t("prevQuestion", lang)}</span>
         </button>
       </div>
 
@@ -48,7 +48,7 @@ export function TestFooter({
             onClick={onFinish}
             disabled={finishing}
           >
-            {t("finishTest", lang)}
+            <span className="exam-footer__text">{t("finishTest", lang)}</span>
             <span className="material-symbols-outlined">check</span>
           </button>
         ) : (
@@ -58,7 +58,7 @@ export function TestFooter({
             onClick={onNext}
             disabled={finishing}
           >
-            {t("nextQuestion", lang)}
+            <span className="exam-footer__text">{t("nextQuestion", lang)}</span>
             <span className="material-symbols-outlined">chevron_right</span>
           </button>
         )}

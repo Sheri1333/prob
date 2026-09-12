@@ -1,4 +1,9 @@
 import { newTestId } from "./ids.js";
+import {
+  blockMaxScore,
+  questionWeight,
+  type EntBlockKind,
+} from "./ent.js";
 
 export type QuestionType = "single_choice" | "multiple_choice" | "matching";
 
@@ -128,6 +133,63 @@ export function scoreTest(
     if (correct) score += 1;
   }
   return { score, maxScore: questions.length, results };
+}
+
+function answerFor(
+  question: Question,
+  answers: Record<string, AnswerValue>,
+): AnswerValue | undefined {
+  return answers[String(question.id)] ?? answers[question.id as unknown as string];
+}
+
+export function scaleToOfficial(
+  raw: number,
+  rawMax: number,
+  officialMax: number,
+): number {
+  if (rawMax <= 0 || officialMax <= 0) return 0;
+  if (rawMax === officialMax) {
+    return Math.min(officialMax, Math.max(0, Math.round(raw)));
+  }
+  return Math.min(
+    officialMax,
+    Math.max(0, Math.round((raw / rawMax) * officialMax)),
+  );
+}
+
+export function scoreEntSection(
+  block: EntBlockKind,
+  questions: Question[],
+  answers: Record<string, AnswerValue>,
+): {
+  score: number;
+  maxScore: number;
+  results: Record<number, boolean>;
+  points: Record<number, number>;
+} {
+  const officialMax = blockMaxScore(block);
+  const results: Record<number, boolean> = {};
+  const rawPoints: Record<number, number> = {};
+  let raw = 0;
+  let rawMax = 0;
+
+  questions.forEach((q, index) => {
+    const weight = questionWeight(block, index);
+    rawMax += weight;
+    const correct = isQuestionCorrect(q, answerFor(q, answers));
+    results[q.id] = correct;
+    rawPoints[q.id] = correct ? weight : 0;
+    if (correct) raw += weight;
+  });
+
+  const score = scaleToOfficial(raw, rawMax, officialMax);
+  const scale = rawMax > 0 ? officialMax / rawMax : 0;
+  const points: Record<number, number> = {};
+  for (const q of questions) {
+    points[q.id] = Math.round((rawPoints[q.id] ?? 0) * scale);
+  }
+
+  return { score, maxScore: officialMax, results, points };
 }
 
 export function isAnswerKeyComplete(question: Question): boolean {

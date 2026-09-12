@@ -21,6 +21,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
+  applyAuth: (token: string, user: AuthUser) => void;
   logout: () => void;
   isAdmin: boolean;
 }
@@ -50,19 +51,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { token, user: u } = await api.login({ email, password });
+  const applyAuth = useCallback((token: string, u: AuthUser) => {
     setSession(token, u);
     setUser(u);
   }, []);
 
+  const login = useCallback(async (email: string, password: string) => {
+    const { token, user: u } = await api.login({ email, password });
+    applyAuth(token, u);
+  }, [applyAuth]);
+
   const register = useCallback(
     async (name: string, email: string, password: string) => {
       const { token, user: u } = await api.register({ name, email, password });
-      setSession(token, u);
-      setUser(u);
+      applyAuth(token, u);
     },
-    [],
+    [applyAuth],
   );
 
   const logout = useCallback(() => {
@@ -76,10 +80,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       login,
       register,
+      applyAuth,
       logout,
       isAdmin: user?.role === "admin",
     }),
-    [user, loading, login, register, logout],
+    [user, loading, login, register, applyAuth, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

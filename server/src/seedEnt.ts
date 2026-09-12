@@ -2,7 +2,7 @@
  * Seed one full ENT variant into MongoDB.
  * Run: npx tsx src/seedEnt.ts  (from server/)
  */
-import { connectDb, closeDb, tests, users, type TestDoc } from "./db.js";
+import { connectDb, closeDb, tests, users, type TestDoc, type UserDoc } from "./db.js";
 import { newTestId } from "./ids.js";
 import type { Question } from "./scoring.js";
 import bcrypt from "bcryptjs";
@@ -295,7 +295,8 @@ async function ensureAdmin(): Promise<void> {
     name: "Admin",
     role: "admin",
     createdAt: new Date(),
-  });
+    emailVerified: true,
+  } as UserDoc);
   console.log(`Admin created: ${email} / admin123`);
 }
 

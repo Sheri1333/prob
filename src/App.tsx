@@ -8,6 +8,11 @@ import { CatalogPage } from "./pages/CatalogPage";
 import { ExamPage } from "./pages/ExamPage";
 import { ExamResultsPage } from "./pages/ExamResultsPage";
 import { LoginPage, RegisterPage } from "./pages/LoginPage";
+import {
+  ForgotPasswordPage,
+  ResetPasswordPage,
+  VerifyEmailPage,
+} from "./pages/EmailAuthPages";
 import { LegalPage } from "./pages/LegalPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ResultsPage } from "./pages/ResultsPage";
@@ -33,12 +38,11 @@ export function App() {
             />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot" element={<ForgotPasswordPage />} />
+            <Route path="/reset" element={<ResetPasswordPage />} />
+            <Route path="/verify" element={<VerifyEmailPage />} />
             <Route path="/profile" element={<ProfilePage lang={lang} />} />
             <Route path="/admin" element={<AdminPage />} />
-            <Route
-              path="/exam"
-              element={<ExamPage lang={lang} onToggleLang={toggleLang} />}
-            />
             <Route
               path="/exam/results/:sessionId"
               element={<ExamResultsPage lang={lang} />}
@@ -46,6 +50,14 @@ export function App() {
             <Route
               path="/exam/results"
               element={<ExamResultsPage lang={lang} />}
+            />
+            <Route
+              path="/exam/:sessionId"
+              element={<ExamPage lang={lang} onToggleLang={toggleLang} />}
+            />
+            <Route
+              path="/exam"
+              element={<ExamPage lang={lang} onToggleLang={toggleLang} />}
             />
             <Route
               path="/test/:testId"

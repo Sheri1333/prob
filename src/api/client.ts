@@ -2,6 +2,7 @@ import type { AnswerValue, Question, TestDefinition } from "../types/test";
 import type {
   ExamStartResponse,
   ExamSubmitResponse,
+  ExamSessionResponse,
 } from "../utils/examDraft";
 
 const TOKEN_KEY = "prob_token";
@@ -29,6 +30,7 @@ export interface AuthUser {
   email: string;
   name: string;
   role: "user" | "admin";
+  emailVerified?: boolean;
 }
 
 export function getToken(): string | null {
@@ -99,6 +101,34 @@ export const api = {
     return request<{ user: AuthUser }>("/auth/me");
   },
 
+  forgotPassword(email: string) {
+    return request<{ ok: boolean; message: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  resetPassword(body: { token: string; password: string }) {
+    return request<{ ok: boolean }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  verifyEmail(token: string) {
+    return request<{ ok: boolean; token: string; user: AuthUser }>(
+      "/auth/verify-email",
+      { method: "POST", body: JSON.stringify({ token }) },
+    );
+  },
+
+  resendVerify() {
+    return request<{ ok: boolean; alreadyVerified?: boolean }>(
+      "/auth/resend-verify",
+      { method: "POST" },
+    );
+  },
+
   getExamBlueprint() {
     return request<{
       durationMinutes: number;
@@ -137,6 +167,24 @@ export const api = {
     });
   },
 
+  examActive() {
+    return request<{ session: ExamStartResponse | null }>("/exams/active");
+  },
+
+  saveExamProgress(
+    sessionId: string,
+    body: {
+      sectionIndex?: number;
+      answersByTest?: Record<string, Record<string, AnswerValue>>;
+      currentIndexByTest?: Record<string, number>;
+    },
+  ) {
+    return request<ExamSessionResponse>(
+      "/exams/sessions/" + encodeURIComponent(sessionId),
+      { method: "PATCH", body: JSON.stringify(body) },
+    );
+  },
+
   submitExam(body: {
     sessionId: string;
     startedAt: string;
@@ -165,7 +213,7 @@ export const api = {
   },
 
   examSession(sessionId: string) {
-    return request<ExamSubmitResponse>(
+    return request<ExamSessionResponse>(
       "/exams/sessions/" + encodeURIComponent(sessionId),
     );
   },
@@ -309,9 +357,129 @@ export const api = {
     return request<EntPricing>("/admin/pricing");
   },
 
+  adminPool() {
+    return request<{
+      mandatory: Array<{
+        key: string;
+        label: { kz: string; ru: string };
+        variantCount: number;
+        ready: boolean;
+      }>;
+      profileSubjects: Array<{
+        key: string;
+        labelKz: string;
+        labelRu: string;
+        kind: "mandatory" | "profile";
+        variantCount: number;
+        ready: boolean;
+      }>;
+      combinations: Array<{
+        id: string;
+        labelKz: string;
+        labelRu: string;
+        subject1: string;
+        subject2: string;
+        ready: boolean;
+        missing: string[];
+        variantCount1: number;
+        variantCount2: number;
+      }>;
+      missingMandatory: Array<{
+        key: string;
+        label: { kz: string; ru: string };
+        variantCount: number;
+        ready: boolean;
+      }>;
+      missingProfile: Array<{
+        key: string;
+        labelKz: string;
+        labelRu: string;
+        variantCount: number;
+        ready: boolean;
+      }>;
+      ready: boolean;
+    }>("/admin/pool");
+  },
+
+  adminApplyTestKeys(id: string, text: string) {
+    return request<{
+      ok: boolean;
+      id: string;
+      applied: number[];
+      skipped: number[];
+      keyed: number;
+      total: number;
+    }>("/admin/tests/" + encodeURIComponent(id) + "/keys", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  },
+
+  adminImportKeys(text: string) {
+    return request<{
+      ok: boolean;
+      imported: number;
+      results: Array<{
+        testId: string;
+        title?: string;
+        ok: boolean;
+        applied?: number;
+        skipped?: number[];
+        total?: number;
+        error?: string;
+      }>;
+    }>("/admin/keys", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  },
+
   adminSavePricing(body: EntPricing) {
     return request<EntPricing>("/admin/pricing", {
       method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+
+  adminEmailStatus() {
+    return request<{
+      configured: boolean;
+      error?: string;
+      email?: string;
+      companyName?: string;
+      credits?: number;
+      sender?: { name: string; email: string };
+      listId?: number;
+      listName?: string;
+      subscribers?: number;
+    }>("/admin/email");
+  },
+
+  adminEmailTest(email?: string) {
+    return request<{ ok: boolean; to: string }>("/admin/email/test", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  adminEmailSync() {
+    return request<{
+      ok: boolean;
+      synced: number;
+      total: number;
+      errors: string[];
+    }>("/admin/email/sync", { method: "POST" });
+  },
+
+  adminEmailCampaign(body: {
+    name?: string;
+    subject: string;
+    htmlContent: string;
+    scheduledAt?: string | null;
+    sendNow?: boolean;
+  }) {
+    return request<{ ok: boolean; id: number }>("/admin/email/campaign", {
+      method: "POST",
       body: JSON.stringify(body),
     });
   },

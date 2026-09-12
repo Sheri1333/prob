@@ -5,7 +5,6 @@ import { api, type EntPricing } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnimatedNumber } from "../components/AnimatedNumber";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { OyuOrnament } from "../components/OyuOrnament";
 import { SiteFooter } from "../components/SiteFooter";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { ToastHost, useToasts } from "../components/Toast";
@@ -111,6 +110,9 @@ export function CatalogPage({ lang }: CatalogPageProps) {
   });
   const [comboModalOpen, setComboModalOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(
+    () => loadExamDraft()?.sessionId ?? null,
+  );
   const { toasts, push: toast, dismiss: dismissToast } = useToasts();
 
   useEffect(() => {
@@ -131,6 +133,12 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       .getPricing()
       .then((p) => {
         if (!cancelled) setPricing(p);
+      })
+      .catch(() => undefined);
+    api
+      .examActive()
+      .then(({ session }) => {
+        if (!cancelled) setActiveSessionId(session?.sessionId ?? null);
       })
       .catch(() => undefined);
     return () => {
@@ -186,22 +194,28 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       navigate("/login", { state: { from: "/exam" } });
       return;
     }
-    navigate("/exam");
+    navigate(activeSessionId ? `/exam/${activeSessionId}` : "/exam");
   };
 
-  const resume = loadExamDraft();
+  const resume = activeSessionId;
 
   const sessionMinutes = blueprint?.durationMinutes ?? 240;
 
   return (
     <div className="page" ref={pageRef}>
       <header className="site-header">
-        <div className="site-header__logo">Талапкер</div>
-        <nav className="site-header__nav">
+        <div className="site-header__brand">
+          <div className="site-header__logo">Талапкер</div>
           <ThemeToggle />
+        </div>
+        <nav className="site-header__nav">
           {user ? (
             <>
-              {isAdmin && <Link to="/admin">Админка</Link>}
+              {isAdmin && (
+                <Link to="/admin" className="header-btn header-btn--ghost">
+                  Админка
+                </Link>
+              )}
               <Link to="/profile" className="site-header__user">
                 {user.name}
               </Link>
@@ -243,7 +257,6 @@ export function CatalogPage({ lang }: CatalogPageProps) {
               : "Талапкер — сервис подготовки к ЕНТ. Готовься вместе с нами."}
           </p>
         </div>
-        <OyuOrnament className="hero__oyu" />
       </section>
 
       {error && (

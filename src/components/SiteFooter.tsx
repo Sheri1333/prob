@@ -46,7 +46,9 @@ export function SiteFooter({ lang }: { lang: Lang }) {
   return (
     <footer className="site-footer">
       <section className="site-footer__block">
-        <h2>{kz ? "Талапкер әлеуметтік желіде" : "Талапкер в соцсетях"}</h2>
+        <h2 className="landing-section-title">
+          {kz ? "Талапкер әлеуметтік желіде" : "Талапкер в соцсетях"}
+        </h2>
         <p>
           {kz
             ? "Instagram-да акциялар мен жеңілдіктер жариялаймыз. Маңызды жаңалықтарды өткізіп алмау үшін жазылыңыз."
@@ -74,7 +76,9 @@ export function SiteFooter({ lang }: { lang: Lang }) {
       </section>
 
       <section className="site-footer__block">
-        <h2>{kz ? "Сұрақтарыңыз қалды ма?" : "Остались вопросы?"}</h2>
+        <h2 className="landing-section-title">
+          {kz ? "Сұрақтарыңыз қалды ма?" : "Остались вопросы?"}
+        </h2>
         <p>
           {kz
             ? "Жаңа қолданушылар жиі қоятын сұрақтарды жинадық. Жауап таппасаңыз — бізбен байланысыңыз."

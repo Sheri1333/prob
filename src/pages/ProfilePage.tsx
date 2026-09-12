@@ -26,6 +26,8 @@ export function ProfilePage({ lang }: ProfilePageProps) {
   const [error, setError] = useState("");
   const [loadingAttempts, setLoadingAttempts] = useState(true);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyNotice, setVerifyNotice] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -52,13 +54,21 @@ export function ProfilePage({ lang }: ProfilePageProps) {
   return (
     <div className="page">
       <header className="site-header">
-        <Link to="/" className="site-header__logo">
-          Талапкер
-        </Link>
-        <nav className="site-header__nav">
+        <div className="site-header__brand">
+          <Link to="/" className="site-header__logo">
+            Талапкер
+          </Link>
           <ThemeToggle />
-          {isAdmin && <Link to="/admin">Админка</Link>}
-          <Link to="/">{lang === "kz" ? "Каталог" : "Каталог"}</Link>
+        </div>
+        <nav className="site-header__nav">
+          {isAdmin && (
+            <Link to="/admin" className="header-btn header-btn--ghost">
+              Админка
+            </Link>
+          )}
+          <Link to="/" className="header-btn header-btn--ghost">
+            {lang === "kz" ? "Каталог" : "Каталог"}
+          </Link>
           <button
             type="button"
             className="link-btn"
@@ -87,6 +97,40 @@ export function ProfilePage({ lang }: ProfilePageProps) {
               : "Ученик"}
         </span>
       </section>
+
+      {user.emailVerified === false && (
+        <p className="auth-card__notice" style={{ margin: "0 0 1rem" }}>
+          {lang === "kz"
+            ? "Email әлі расталмаған. Нәтиже мен парольді қалпына келтіру үшін растаңыз."
+            : "Email ещё не подтверждён. Подтвердите почту, чтобы получать результаты и сбрасывать пароль."}{" "}
+          <button
+            type="button"
+            className="link-btn"
+            disabled={verifyBusy}
+            onClick={() => {
+              setVerifyBusy(true);
+              api
+                .resendVerify()
+                .then(() =>
+                  setVerifyNotice(
+                    lang === "kz" ? "Хат жіберілді" : "Письмо отправлено",
+                  ),
+                )
+                .catch((e) =>
+                  setError(e instanceof Error ? e.message : "Ошибка"),
+                )
+                .finally(() => setVerifyBusy(false));
+            }}
+          >
+            {verifyBusy
+              ? "..."
+              : lang === "kz"
+                ? "Қайта жіберу"
+                : "Отправить ещё раз"}
+          </button>
+          {verifyNotice ? ` · ${verifyNotice}` : ""}
+        </p>
+      )}
 
       {error && <p className="auth-card__error">{error}</p>}
 

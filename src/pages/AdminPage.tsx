@@ -12,9 +12,10 @@ import {
   isAnswerKeyComplete,
   keyedCount,
   nextQuestionId,
+  applyAnswerKeys,
 } from "../utils/answerKey";
 
-type Tab = "dashboard" | "tests" | "editor" | "pricing" | "users";
+type Tab = "dashboard" | "tests" | "editor" | "pricing" | "email" | "users";
 type ParseResult = Awaited<ReturnType<typeof api.adminParsePdf>>;
 type AdminUser = Awaited<ReturnType<typeof api.adminUsers>>["users"][number];
 
@@ -62,14 +63,48 @@ export function AdminPage() {
   const [testSubject, setTestSubject] = useState("");
   const [testQuestions, setTestQuestions] = useState("");
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [pool, setPool] = useState<Awaited<
+    ReturnType<typeof api.adminPool>
+  > | null>(null);
+  const [bulkKeysText, setBulkKeysText] = useState("");
+  const [importingKeys, setImportingKeys] = useState(false);
+  const [keysModal, setKeysModal] = useState<{
+    id: string;
+    title: string;
+    text: string;
+  } | null>(null);
+  const [editorKeysText, setEditorKeysText] = useState("");
+  const [emailStatus, setEmailStatus] = useState<Awaited<
+    ReturnType<typeof api.adminEmailStatus>
+  > | null>(null);
+  const [campaign, setCampaign] = useState({
+    name: "",
+    subject: "",
+    htmlContent: "",
+    scheduledAt: "",
+  });
+  const [emailBusy, setEmailBusy] = useState("");
 
   const load = useCallback(async () => {
     try {
-      if (tab === "dashboard") setStats(await api.adminStats());
+      if (tab === "dashboard") {
+        const [nextStats, nextPool] = await Promise.all([
+          api.adminStats(),
+          api.adminPool(),
+        ]);
+        setStats(nextStats);
+        setPool(nextPool);
+      }
       if (tab === "users") setUsers((await api.adminUsers()).users);
       if (tab === "tests" || tab === "editor") {
-        setTests((await api.adminTests()).tests);
+        const [nextTests, nextPool] = await Promise.all([
+          api.adminTests(),
+          api.adminPool(),
+        ]);
+        setTests(nextTests.tests);
+        setPool(nextPool);
       }
+      if (tab === "email") setEmailStatus(await api.adminEmailStatus());
       if (tab === "pricing") {
         const p = await api.adminGetPricing();
         setPricing({
@@ -145,6 +180,7 @@ export function AdminPage() {
     setDraftQuestions([]);
     setPreviewMeta(EMPTY_META);
     setOpenPreviewId(null);
+    setEditorKeysText("");
   }
 
   function startManual() {
@@ -271,6 +307,63 @@ export function AdminPage() {
     }
   }
 
+  async function handleBulkKeysImport() {
+    if (!bulkKeysText.trim()) return;
+    setImportingKeys(true);
+    try {
+      const result = await api.adminImportKeys(bulkKeysText);
+      const failed = result.results.filter((r) => !r.ok);
+      toast(
+        failed.length ? "error" : "ok",
+        failed.length
+          ? `Импорт: ${result.imported} ок, ${failed.length} с ошибкой`
+          : `Ключи импортированы в ${result.imported} тест(ов)`,
+      );
+      if (result.imported > 0) {
+        setBulkKeysText("");
+        setPool(await api.adminPool());
+      }
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Ошибка импорта ключей");
+    } finally {
+      setImportingKeys(false);
+    }
+  }
+
+  async function handleTestKeysImport() {
+    if (!keysModal?.text.trim()) return;
+    setImportingKeys(true);
+    try {
+      const result = await api.adminApplyTestKeys(keysModal.id, keysModal.text);
+      toast(
+        "ok",
+        `Ключи: ${result.keyed} из ${result.total}` +
+          (result.skipped.length ? `, пропуск: ${result.skipped.join(", ")}` : ""),
+      );
+      setKeysModal(null);
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Ошибка ключей");
+    } finally {
+      setImportingKeys(false);
+    }
+  }
+
+  function applyEditorKeys() {
+    if (!editorKeysText.trim()) return;
+    const result = applyAnswerKeys(draftQuestions, editorKeysText);
+    if (result.applied === 0) {
+      toast("error", "Не удалось применить ключи к вопросам этого теста");
+      return;
+    }
+    setDraftQuestions(result.questions);
+    toast(
+      "ok",
+      `Ключи проставлены: ${result.applied}` +
+        (result.skipped.length ? `, нет вопросов: ${result.skipped.join(", ")}` : ""),
+    );
+    setEditorKeysText("");
+  }
+
   async function loadTestForEdit(id: string) {
     try {
       const { test } = await api.adminGetTest(id);
@@ -289,6 +382,62 @@ export function AdminPage() {
       toast("ok", `Тест «${test.titleKz || test.title}» открыт`);
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Не удалось открыть тест");
+    }
+  }
+
+  async function handleEmailTest() {
+    setEmailBusy("test");
+    try {
+      const result = await api.adminEmailTest();
+      toast("ok", `Тестовое письмо ушло на ${result.to}`);
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Ошибка письма");
+    } finally {
+      setEmailBusy("");
+    }
+  }
+
+  async function handleEmailSync() {
+    setEmailBusy("sync");
+    try {
+      const result = await api.adminEmailSync();
+      toast(
+        result.errors.length ? "error" : "ok",
+        `В Brevo: ${result.synced} из ${result.total}`,
+      );
+      setEmailStatus(await api.adminEmailStatus());
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Ошибка синхронизации");
+    } finally {
+      setEmailBusy("");
+    }
+  }
+
+  async function handleEmailCampaign(sendNow: boolean) {
+    if (!campaign.subject.trim() || !campaign.htmlContent.trim()) {
+      toast("error", "Укажите тему и текст письма");
+      return;
+    }
+    setEmailBusy("campaign");
+    try {
+      const result = await api.adminEmailCampaign({
+        name: campaign.name.trim() || campaign.subject.trim(),
+        subject: campaign.subject.trim(),
+        htmlContent: campaign.htmlContent,
+        scheduledAt: sendNow ? null : campaign.scheduledAt || null,
+        sendNow,
+      });
+      toast(
+        "ok",
+        sendNow
+          ? `Кампания ${result.id} отправлена`
+          : `Кампания ${result.id} создана`,
+      );
+      setCampaign({ name: "", subject: "", htmlContent: "", scheduledAt: "" });
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Ошибка кампании");
+    } finally {
+      setEmailBusy("");
     }
   }
 
@@ -329,6 +478,43 @@ export function AdminPage() {
   return (
     <div className="admin-page">
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
+      {keysModal && (
+        <div className="admin-modal-overlay" role="presentation">
+          <div className="admin-modal" role="dialog">
+            <h2>Ключи: {keysModal.title}</h2>
+            <p className="admin-hint">
+              1-A 2-C 3-BD. Для сопоставления: 31-1A,2C
+            </p>
+            <textarea
+              rows={8}
+              value={keysModal.text}
+              spellCheck={false}
+              onChange={(e) =>
+                setKeysModal((prev) =>
+                  prev ? { ...prev, text: e.target.value } : prev,
+                )
+              }
+            />
+            <div className="admin-modal__actions">
+              <button
+                type="button"
+                className="admin-btn"
+                onClick={() => setKeysModal(null)}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                disabled={importingKeys || !keysModal.text.trim()}
+                onClick={() => void handleTestKeysImport()}
+              >
+                {importingKeys ? "Сохранение..." : "Применить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {removeIndex !== null && (
         <ConfirmDialog
           title="Удалить вопрос"
@@ -355,6 +541,7 @@ export function AdminPage() {
               ["tests", "Тесты"],
               ["editor", "Создать"],
               ["pricing", "Цены"],
+              ["email", "Письма"],
               ["users", "Пользователи"],
             ] as const
           ).map(([id, label]) => (
@@ -408,6 +595,76 @@ export function AdminPage() {
                 <strong>{stats.stats.avgScorePercent}%</strong>
               </div>
             </div>
+
+            {pool && (
+              <div className="admin-panel admin-pool">
+                <h2>Пул предметов ҰБТ</h2>
+                {pool.ready ? (
+                  <p className="admin-hint">
+                    Обязательные блоки на месте. Готовых комбинаций:{" "}
+                    {pool.combinations.filter((c) => c.ready).length} из{" "}
+                    {pool.combinations.length}.
+                  </p>
+                ) : (
+                  <p className="admin-alert admin-alert--error">
+                    Нельзя собрать полный ҰБТ: не хватает тестов в пуле.
+                  </p>
+                )}
+                <div className="admin-pool__grid">
+                  <div>
+                    <h3>Обязательные</h3>
+                    <ul className="admin-pool__list">
+                      {pool.mandatory.map((m) => (
+                        <li
+                          key={m.key}
+                          className={m.ready ? "is-ready" : "is-missing"}
+                        >
+                          <strong>{m.label.ru}</strong>
+                          <span>
+                            {m.ready
+                              ? `${m.variantCount} вариант(ов)`
+                              : "нет теста"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h3>Профильные без тестов</h3>
+                    {pool.missingProfile.length === 0 ? (
+                      <p className="admin-hint">Все профильные предметы есть.</p>
+                    ) : (
+                      <ul className="admin-pool__list">
+                        {pool.missingProfile.map((s) => (
+                          <li key={s.key} className="is-missing">
+                            <strong>{s.labelRu}</strong>
+                            <span>{s.labelKz}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+                {pool.combinations.some((c) => !c.ready) && (
+                  <details className="admin-pool__combos">
+                    <summary>
+                      Комбинации без полного пула (
+                      {pool.combinations.filter((c) => !c.ready).length})
+                    </summary>
+                    <ul className="admin-pool__list">
+                      {pool.combinations
+                        .filter((c) => !c.ready)
+                        .map((c) => (
+                          <li key={c.id} className="is-missing">
+                            <strong>{c.labelRu}</strong>
+                            <span>нет: {c.missing.join(", ")}</span>
+                          </li>
+                        ))}
+                    </ul>
+                  </details>
+                )}
+              </div>
+            )}
 
             <div className="admin-panel">
                 <h2>Недавние регистрации</h2>
@@ -465,6 +722,37 @@ export function AdminPage() {
                 onClick={startManual}
               >
                 Создать тест
+              </button>
+            </div>
+            {pool && (pool.missingMandatory.length > 0 || pool.missingProfile.length > 0) && (
+              <p className="admin-alert admin-alert--error">
+                В пуле не хватает:{" "}
+                {[
+                  ...pool.missingMandatory.map((m) => m.label.ru),
+                  ...pool.missingProfile.map((s) => s.labelRu),
+                ].join(", ")}
+              </p>
+            )}
+            <div className="admin-panel admin-keys-import">
+              <h2>Массовый импорт ключей</h2>
+              <p className="admin-hint">
+                JSON вида {"{ \"id-теста\": \"1-A 2-B 3-CD\", ... }"} или ключи
+                по строкам: 1-A, 2-B, 31-1A,2C.
+              </p>
+              <textarea
+                rows={6}
+                value={bulkKeysText}
+                spellCheck={false}
+                placeholder='{ "test-uuid": "1-A 2-C 3-B" }'
+                onChange={(e) => setBulkKeysText(e.target.value)}
+              />
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                disabled={importingKeys || !bulkKeysText.trim()}
+                onClick={() => void handleBulkKeysImport()}
+              >
+                {importingKeys ? "Импорт..." : "Импортировать ключи"}
               </button>
             </div>
             {tests.length === 0 ? (
@@ -530,6 +818,18 @@ export function AdminPage() {
                                   onClick={() => void loadTestForEdit(t.id)}
                                 >
                                   Редактировать
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setKeysModal({
+                                      id: t.id,
+                                      title: t.titleKz || t.title,
+                                      text: "",
+                                    })
+                                  }
+                                >
+                                  Ключи
                                 </button>
                                 <button
                                   type="button"
@@ -703,6 +1003,29 @@ export function AdminPage() {
                   </label>
                 </div>
 
+                <div className="admin-bulk-keys">
+                  <h2>Вставить ключи списком</h2>
+                  <p className="admin-hint">
+                    Формат: 1-A 2-C 3-BD или JSON {"{ \"1\": \"A\", \"2\": [\"B\",\"C\"] }"}.
+                    Сопоставление: 31-1A,2C.
+                  </p>
+                  <textarea
+                    rows={4}
+                    value={editorKeysText}
+                    spellCheck={false}
+                    placeholder={"1-A\n2-C\n3-B"}
+                    onChange={(e) => setEditorKeysText(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="admin-btn"
+                    disabled={!editorKeysText.trim()}
+                    onClick={applyEditorKeys}
+                  >
+                    Проставить ключи
+                  </button>
+                </div>
+
                 <div className="admin-key-progress">
                   <div>
                     Ключи ответов:{" "}
@@ -858,6 +1181,137 @@ export function AdminPage() {
                 {savingPricing ? "Сохранение..." : "Сохранить цены"}
               </button>
             </div>
+          </section>
+        )}
+
+        {tab === "email" && (
+          <section>
+            <div className="admin-page-head">
+              <div>
+                <h1>Письма Brevo</h1>
+                <p>Контакты, тестовые письма и кампании в список Talapker</p>
+              </div>
+            </div>
+            {!emailStatus ? (
+              <p className="admin-hint">Загрузка статуса Brevo...</p>
+            ) : !emailStatus.configured || emailStatus.error ? (
+              <p className="admin-alert admin-alert--error">
+                {emailStatus.error || "Задайте BREVO_API_KEY на сервере"}
+              </p>
+            ) : (
+              <>
+                <div className="admin-stats">
+                  <div className="admin-stat">
+                    <span>Кредиты</span>
+                    <strong>{emailStatus.credits ?? "—"}</strong>
+                  </div>
+                  <div className="admin-stat">
+                    <span>Список</span>
+                    <strong>{emailStatus.subscribers ?? 0}</strong>
+                  </div>
+                  <div className="admin-stat">
+                    <span>Отправитель</span>
+                    <strong>{emailStatus.sender?.email}</strong>
+                  </div>
+                </div>
+                <p className="admin-hint">
+                  {emailStatus.listName} · id {emailStatus.listId} ·{" "}
+                  {emailStatus.sender?.name}
+                </p>
+                <div className="admin-table__actions" style={{ margin: "0 0 1rem" }}>
+                  <button
+                    type="button"
+                    className="admin-btn"
+                    disabled={Boolean(emailBusy)}
+                    onClick={() => void handleEmailTest()}
+                  >
+                    {emailBusy === "test" ? "Отправка..." : "Тестовое письмо себе"}
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn"
+                    disabled={Boolean(emailBusy)}
+                    onClick={() => void handleEmailSync()}
+                  >
+                    {emailBusy === "sync"
+                      ? "Синхронизация..."
+                      : "Синхронизировать пользователей"}
+                  </button>
+                </div>
+                <div className="admin-panel admin-keys-import">
+                  <h2>Кампания</h2>
+                  <p className="admin-hint">
+                    Уходит в список Brevo, как в API EmailCampaigns: name, subject,
+                    sender, htmlContent, listIds.
+                  </p>
+                  <label>
+                    Название кампании
+                    <input
+                      value={campaign.name}
+                      onChange={(e) =>
+                        setCampaign((c) => ({ ...c, name: e.target.value }))
+                      }
+                      placeholder="Сентябрьская рассылка"
+                    />
+                  </label>
+                  <label>
+                    Тема
+                    <input
+                      value={campaign.subject}
+                      onChange={(e) =>
+                        setCampaign((c) => ({ ...c, subject: e.target.value }))
+                      }
+                      placeholder="Пробный ҰБТ на этой неделе"
+                    />
+                  </label>
+                  <label>
+                    Текст / HTML
+                    <textarea
+                      rows={10}
+                      value={campaign.htmlContent}
+                      onChange={(e) =>
+                        setCampaign((c) => ({
+                          ...c,
+                          htmlContent: e.target.value,
+                        }))
+                      }
+                      placeholder="<p>Сәлем! Жаңа пробный дайын.</p>"
+                    />
+                  </label>
+                  <label>
+                    Отложить (необязательно)
+                    <input
+                      type="datetime-local"
+                      value={campaign.scheduledAt}
+                      onChange={(e) =>
+                        setCampaign((c) => ({
+                          ...c,
+                          scheduledAt: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="admin-table__actions">
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--primary"
+                      disabled={Boolean(emailBusy)}
+                      onClick={() => void handleEmailCampaign(true)}
+                    >
+                      {emailBusy === "campaign" ? "Отправка..." : "Отправить сейчас"}
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn"
+                      disabled={Boolean(emailBusy) || !campaign.scheduledAt}
+                      onClick={() => void handleEmailCampaign(false)}
+                    >
+                      Запланировать
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </section>
         )}
 

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { translateSubject } from "../i18n/subjects";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
-import type { ExamSubmitResponse } from "../utils/examDraft";
+import { isSubmittedExam, type ExamSubmitResponse } from "../utils/examDraft";
 import { entScoreToGrade } from "../utils/testUtils";
 
 interface ExamResultsPageProps {
@@ -14,6 +14,7 @@ interface ExamResultsPageProps {
 
 export function ExamResultsPage({ lang }: ExamResultsPageProps) {
   const { sessionId } = useParams();
+  const navigate = useNavigate();
   const location = useLocation();
   const fromState = location.state as ExamSubmitResponse | null;
   const [state, setState] = useState<ExamSubmitResponse | null>(
@@ -30,7 +31,12 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
     api
       .examSession(sessionId)
       .then((data) => {
-        if (!cancelled) setState(data);
+        if (cancelled) return;
+        if (!isSubmittedExam(data)) {
+          navigate(`/exam/${sessionId}`, { replace: true });
+          return;
+        }
+        setState(data);
       })
       .catch((e) => {
         if (!cancelled) {
@@ -43,7 +49,7 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [sessionId, state]);
+  }, [sessionId, state, navigate]);
 
   if (loading) {
     return <div className="page page--center">Загрузка...</div>;
@@ -192,7 +198,7 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
                             : "ent-grid-table__bad"
                         }
                       >
-                        {section.results[n] ? "1" : "0"}
+                        {section.points?.[n] ?? (section.results[n] ? 1 : 0)}
                       </td>
                     ))}
                   </tr>

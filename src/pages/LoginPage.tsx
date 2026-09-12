@@ -74,6 +74,9 @@ export function LoginPage() {
           {busy ? "..." : "Войти"}
         </button>
         <p className="auth-card__footer">
+          <Link to="/forgot">Забыли пароль?</Link>
+        </p>
+        <p className="auth-card__footer">
           Нет аккаунта?{" "}
           <Link to="/register" state={{ from, notice }}>
             Создать

@@ -41,6 +41,11 @@ export interface UserDoc {
   name: string;
   role: UserRole;
   createdAt: Date;
+  emailVerified?: boolean;
+  verifyTokenHash?: string | null;
+  verifyExpiresAt?: Date | null;
+  resetTokenHash?: string | null;
+  resetExpiresAt?: Date | null;
 }
 
 export interface TestDoc {
@@ -80,6 +85,34 @@ export interface AttemptDoc {
   finishedAt: Date;
   /** Full ENT session linking several section attempts. */
   sessionId?: string;
+}
+
+export type ExamSessionStatus = "in_progress" | "submitted" | "abandoned";
+
+export interface ExamSessionSection {
+  block: "history" | "reading" | "math_literacy" | "profile";
+  testId: string;
+  subject: string;
+  title: string;
+  titleKz: string;
+  questionCount: number;
+  questions: Question[];
+}
+
+export interface ExamSessionDoc {
+  _id: string;
+  userId: ObjectId | null;
+  comboId: string | null;
+  profileSubjects: string[];
+  startedAt: Date;
+  endsAt: Date;
+  status: ExamSessionStatus;
+  sectionIndex: number;
+  answersByTest: Record<string, Record<string, unknown>>;
+  currentIndexByTest: Record<string, number>;
+  sections: ExamSessionSection[];
+  usedTestIds: string[];
+  submittedAt?: Date;
 }
 
 let client: MongoClient | null = null;
@@ -134,10 +167,14 @@ export async function connectDb(): Promise<Db> {
   database = client.db("prob");
 
   await database.collection<UserDoc>("users").createIndex({ email: 1 }, { unique: true });
+  await database.collection<UserDoc>("users").createIndex({ verifyTokenHash: 1 }, { sparse: true });
+  await database.collection<UserDoc>("users").createIndex({ resetTokenHash: 1 }, { sparse: true });
   await database.collection<AttemptDoc>("attempts").createIndex({ userId: 1 });
   await database.collection<AttemptDoc>("attempts").createIndex({ testId: 1 });
   await database.collection<AttemptDoc>("attempts").createIndex({ finishedAt: -1 });
   await database.collection<AttemptDoc>("attempts").createIndex({ sessionId: 1 });
+  await database.collection<ExamSessionDoc>("examSessions").createIndex({ userId: 1, status: 1 });
+  await database.collection<ExamSessionDoc>("examSessions").createIndex({ endsAt: 1 });
 
   await migrateTestIdsToUuid(database);
 
@@ -191,6 +228,10 @@ export function attempts(): Collection<AttemptDoc> {
   return requireDb().collection<AttemptDoc>("attempts");
 }
 
+export function examSessions(): Collection<ExamSessionDoc> {
+  return requireDb().collection<ExamSessionDoc>("examSessions");
+}
+
 export function settings(): Collection<SettingsDoc> {
   return requireDb().collection<SettingsDoc>("settings");
 }
@@ -201,6 +242,7 @@ export function publicUser(doc: UserDoc) {
     email: doc.email,
     name: doc.name,
     role: doc.role,
+    emailVerified: doc.emailVerified !== false,
   };
 }
 

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { attempts, tests } from "../db.js";
+import { attempts, tests, type AttemptDoc } from "../db.js";
 import { authRequired, optionalAuth, type AuthedRequest } from "../auth.js";
 import {
   scoreTest,
@@ -39,7 +39,7 @@ attemptsRouter.post("/", optionalAuth, async (req: AuthedRequest, res) => {
     maxScore,
     startedAt: started,
     finishedAt,
-  });
+  } as AttemptDoc);
 
   res.status(201).json({
     attempt: {

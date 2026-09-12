@@ -10,14 +10,6 @@ export interface ExamSectionMeta {
   questions: Question[];
 }
 
-export interface ExamStartResponse {
-  sessionId: string;
-  durationMinutes: number;
-  startedAt: string;
-  endsAt: number;
-  sections: ExamSectionMeta[];
-}
-
 export interface ExamSectionResult {
   attemptId: string;
   testId: string;
@@ -27,18 +19,86 @@ export interface ExamSectionResult {
   score: number;
   maxScore: number;
   results: Record<number, boolean>;
+  points?: Record<number, number>;
   answerLabels: Record<number, string>;
   questionIds: number[];
   questionCount: number;
 }
 
 export interface ExamSubmitResponse {
+  status?: "submitted";
   sessionId: string;
   score: number;
   maxScore: number;
   startedAt: string;
   finishedAt: string;
   sections: ExamSectionResult[];
+}
+
+export interface ExamStartResponse {
+  status?: "in_progress" | "submitted";
+  sessionId: string;
+  durationMinutes: number;
+  startedAt: string;
+  endsAt: number;
+  remainingSeconds?: number;
+  comboId?: string | null;
+  profileSubjects?: string[];
+  sectionIndex?: number;
+  answersByTest?: Record<string, Record<string, AnswerValue>>;
+  currentIndexByTest?: Record<string, number>;
+  sections: ExamSectionMeta[];
+  usedTestIds?: string[];
+}
+
+export type ExamSessionResponse = ExamStartResponse | ExamSubmitResponse;
+
+export function isSubmittedExam(
+  data: ExamSessionResponse,
+): data is ExamSubmitResponse {
+  return data.status === "submitted" || "finishedAt" in data;
+}
+
+export function draftFromSession(session: ExamStartResponse): ExamDraft {
+  return {
+    sessionId: session.sessionId,
+    startedAt: session.startedAt,
+    endsAt: session.endsAt,
+    sectionIndex: session.sectionIndex ?? 0,
+    answersByTest: Object.fromEntries(
+      session.sections.map((s) => [
+        s.testId,
+        answersToNumberKeys(session.answersByTest?.[s.testId] ?? {}),
+      ]),
+    ),
+    currentIndexByTest: Object.fromEntries(
+      session.sections.map((s) => [
+        s.testId,
+        session.currentIndexByTest?.[s.testId] ?? 0,
+      ]),
+    ),
+    sections: session.sections,
+    usedTestIds: session.usedTestIds ?? session.sections.map((s) => s.testId),
+  };
+}
+
+function answersToNumberKeys(
+  answers: Record<string, AnswerValue>,
+): Record<number, AnswerValue> {
+  const out: Record<number, AnswerValue> = {};
+  for (const [key, value] of Object.entries(answers)) {
+    const id = Number(key);
+    if (Number.isFinite(id)) out[id] = value;
+  }
+  return out;
+}
+
+export function answersToStringKeys(
+  answers: Record<number, AnswerValue>,
+): Record<string, AnswerValue> {
+  const out: Record<string, AnswerValue> = {};
+  for (const [key, value] of Object.entries(answers)) out[key] = value;
+  return out;
 }
 
 export interface ExamDraft {

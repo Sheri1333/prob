@@ -41,12 +41,16 @@ export function LegalPage({ lang, kind }: LegalPageProps) {
   return (
     <div className="page">
       <header className="site-header">
-        <Link to="/" className="site-header__logo">
-          Талапкер
-        </Link>
-        <nav className="site-header__nav">
+        <div className="site-header__brand">
+          <Link to="/" className="site-header__logo">
+            Талапкер
+          </Link>
           <ThemeToggle />
-          <Link to="/">{lang === "kz" ? "Басты бет" : "На главную"}</Link>
+        </div>
+        <nav className="site-header__nav">
+          <Link to="/" className="header-btn header-btn--ghost">
+            {lang === "kz" ? "Басты бет" : "На главную"}
+          </Link>
         </nav>
       </header>
       <article className="legal-page">

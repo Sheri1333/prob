@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { api } from "../api/client";
 import { ExamTools } from "../components/ExamTools";
 import { QuestionView } from "../components/QuestionView";
@@ -10,13 +15,16 @@ import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import type { AnswerValue } from "../types/test";
 import {
+  answersToStringKeys,
   clearExamDraft,
-  loadExamDraft,
+  draftFromSession,
+  isSubmittedExam,
   loadUsedVariants,
   rememberUsedVariants,
   saveExamDraft,
   type ExamDraft,
   type ExamSectionMeta,
+  type ExamSessionResponse,
 } from "../utils/examDraft";
 
 interface ExamPageProps {
@@ -33,6 +41,9 @@ function isAnswered(value: AnswerValue | undefined): boolean {
 
 export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
   const navigate = useNavigate();
+  const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
+  const [searchParams] = useSearchParams();
+  const combo = searchParams.get("combo");
   const [draft, setDraft] = useState<ExamDraft | null>(null);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -42,103 +53,154 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
   const [finishing, setFinishing] = useState(false);
   const endsAtRef = useRef(0);
   const finishingRef = useRef(false);
+  const draftRef = useRef<ExamDraft | null>(null);
+  const saveTimer = useRef<number>(0);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const combo = params.get("combo");
-    const existing = loadExamDraft();
+    draftRef.current = draft;
+  }, [draft]);
 
-    if (!combo && existing && existing.sections.length > 0) {
-      endsAtRef.current = existing.endsAt;
-      setDraft(existing);
-      setSecondsLeft(
-        Math.max(0, Math.ceil((existing.endsAt - Date.now()) / 1000)),
-      );
-      setLoading(false);
-      return;
-    }
+  const applySession = useCallback(
+    (session: ExamSessionResponse) => {
+      if (isSubmittedExam(session)) {
+        clearExamDraft();
+        navigate(`/exam/results/${session.sessionId}`, { state: session, replace: true });
+        return false;
+      }
+      const remaining =
+        session.remainingSeconds ??
+        Math.max(0, Math.ceil((session.endsAt - Date.now()) / 1000));
+      endsAtRef.current = Date.now() + remaining * 1000;
+      const next = draftFromSession({
+        ...session,
+        endsAt: endsAtRef.current,
+      });
+      saveExamDraft(next);
+      setDraft(next);
+      setSecondsLeft(remaining);
+      return true;
+    },
+    [navigate],
+  );
 
-    if (!combo) {
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError("");
+
+    const boot = async () => {
+      if (routeSessionId) {
+        const session = await api.examSession(routeSessionId);
+        if (!cancelled) applySession(session);
+        return;
+      }
+
+      if (combo) {
+        const session = await api.startExam({
+          comboId: combo,
+          excludeTestIds: loadUsedVariants(),
+        });
+        if (cancelled) return;
+        if (applySession(session)) {
+          navigate(`/exam/${session.sessionId}`, { replace: true });
+        }
+        return;
+      }
+
+      const { session } = await api.examActive();
+      if (cancelled) return;
+      if (session) {
+        if (applySession(session)) {
+          navigate(`/exam/${session.sessionId}`, { replace: true });
+        }
+        return;
+      }
+
       setLoadError(
         lang === "kz"
           ? "Алдымен бейіндік пәндер комбинациясын таңдаңыз"
           : "Сначала выберите комбинацию профильных предметов",
       );
-      setLoading(false);
-      return;
-    }
+    };
 
-    clearExamDraft();
-    api
-      .startExam({
-        comboId: combo,
-        excludeTestIds: loadUsedVariants(),
+    void boot()
+      .catch((e) => {
+        if (!cancelled) {
+          setLoadError(
+            e instanceof Error ? e.message : "Не удалось открыть ЕНТ",
+          );
+        }
       })
-      .then((session) => {
-        const next: ExamDraft = {
-          sessionId: session.sessionId,
-          startedAt: session.startedAt,
-          endsAt: session.endsAt,
-          sectionIndex: 0,
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applySession, combo, navigate, routeSessionId]);
+
+  const persistProgress = useCallback(
+    async (next: ExamDraft) => {
+      try {
+        const saved = await api.saveExamProgress(next.sessionId, {
+          sectionIndex: next.sectionIndex,
+          currentIndexByTest: next.currentIndexByTest,
           answersByTest: Object.fromEntries(
-            session.sections.map((s) => [s.testId, {}]),
+            Object.entries(next.answersByTest).map(([testId, answers]) => [
+              testId,
+              answersToStringKeys(answers),
+            ]),
           ),
-          currentIndexByTest: Object.fromEntries(
-            session.sections.map((s) => [s.testId, 0]),
-          ),
-          sections: session.sections,
-          usedTestIds: session.sections.map((s) => s.testId),
-        };
-        endsAtRef.current = session.endsAt;
+        });
+        if (isSubmittedExam(saved)) {
+          rememberUsedVariants(next.usedTestIds);
+          clearExamDraft();
+          navigate(`/exam/results/${saved.sessionId}`, { state: saved });
+          return;
+        }
+        if (typeof saved.remainingSeconds === "number") {
+          endsAtRef.current = Date.now() + saved.remainingSeconds * 1000;
+        }
+      } catch {
+        /* keep local draft if the network drops */
+      }
+    },
+    [navigate],
+  );
+
+  const patchDraft = useCallback(
+    (updater: (prev: ExamDraft) => ExamDraft) => {
+      setDraft((prev) => {
+        if (!prev) return prev;
+        const next = updater(prev);
         saveExamDraft(next);
-        setDraft(next);
-        setSecondsLeft(
-          Math.max(0, Math.ceil((session.endsAt - Date.now()) / 1000)),
-        );
-        window.history.replaceState({}, "", "/exam");
-      })
-      .catch((e) =>
-        setLoadError(e instanceof Error ? e.message : "Не удалось начать ЕНТ"),
-      )
-      .finally(() => setLoading(false));
-  }, [lang]);
-
-  const section: ExamSectionMeta | null = draft
-    ? draft.sections[draft.sectionIndex] ?? null
-    : null;
-
-  const answers = section
-    ? (draft!.answersByTest[section.testId] ?? {})
-    : {};
-  const currentIndex = section
-    ? (draft!.currentIndexByTest[section.testId] ?? 0)
-    : 0;
-
-  const patchDraft = useCallback((updater: (prev: ExamDraft) => ExamDraft) => {
-    setDraft((prev) => {
-      if (!prev) return prev;
-      const next = updater(prev);
-      saveExamDraft(next);
-      return next;
-    });
-  }, []);
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = window.setTimeout(() => {
+          void persistProgress(next);
+        }, 800);
+        return next;
+      });
+    },
+    [persistProgress],
+  );
 
   const finishExam = useCallback(async () => {
-    if (!draft || finishingRef.current) return;
+    const current = draftRef.current;
+    if (!current || finishingRef.current) return;
     finishingRef.current = true;
     setFinishing(true);
+    window.clearTimeout(saveTimer.current);
     try {
       const result = await api.submitExam({
-        sessionId: draft.sessionId,
-        startedAt: draft.startedAt,
-        sections: draft.sections.map((s) => {
-          const ans = draft.answersByTest[s.testId] ?? {};
-          const mapped: Record<string, AnswerValue> = {};
-          for (const [k, v] of Object.entries(ans)) mapped[k] = v;
-          return { testId: s.testId, answers: mapped };
-        }),
+        sessionId: current.sessionId,
+        startedAt: current.startedAt,
+        sections: current.sections.map((s) => ({
+          testId: s.testId,
+          answers: answersToStringKeys(current.answersByTest[s.testId] ?? {}),
+        })),
       });
-      rememberUsedVariants(draft.usedTestIds);
+      rememberUsedVariants(current.usedTestIds);
       clearExamDraft();
       navigate(`/exam/results/${result.sessionId}`, { state: result });
     } catch (e) {
@@ -148,10 +210,14 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
         e instanceof Error ? e.message : "Не удалось сохранить результат ЕНТ",
       );
     }
-  }, [draft, navigate]);
+  }, [navigate]);
 
   const finishRef = useRef(finishExam);
   finishRef.current = finishExam;
+
+  useEffect(() => {
+    return () => window.clearTimeout(saveTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!draft) return;
@@ -171,8 +237,26 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     const timer = window.setInterval(() => {
       if (!tick()) window.clearInterval(timer);
     }, 1000);
-    return () => window.clearInterval(timer);
-  }, [draft?.sessionId]);
+    const flush = window.setInterval(() => {
+      const current = draftRef.current;
+      if (current) void persistProgress(current);
+    }, 20_000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearInterval(flush);
+    };
+  }, [draft?.sessionId, persistProgress]);
+
+  const section: ExamSectionMeta | null = draft
+    ? draft.sections[draft.sectionIndex] ?? null
+    : null;
+
+  const answers = section
+    ? (draft!.answersByTest[section.testId] ?? {})
+    : {};
+  const currentIndex = section
+    ? (draft!.currentIndexByTest[section.testId] ?? 0)
+    : 0;
 
   const answeredIndexes = useMemo(() => {
     const set = new Set<number>();
@@ -271,6 +355,8 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
 
   const handleExit = () => {
     if (window.confirm(t("confirmExit", lang))) {
+      const current = draftRef.current;
+      if (current) void persistProgress(current);
       navigate("/");
     }
   };

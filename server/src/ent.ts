@@ -143,7 +143,7 @@ export const ENT_PROFILE_COMBOS: Array<{
 ];
 
 /** Map various subject labels to a stable pool key. */
-const SUBJECT_ALIASES: Array<{ key: string; patterns: RegExp }> = [
+const SUBJECT_ALIASES: Array<{ key: string; patterns: RegExp[] }> = [
   { key: "математика", patterns: [/^математика$/, /^математика\s*\(/] },
   { key: "физика", patterns: [/^физика$/, /^физик/] },
   { key: "география", patterns: [/^география$/, /^географи/] },
@@ -236,3 +236,151 @@ export function getProfileCombo(id: string) {
 
 export const ENT_TOTAL_MINUTES = 240;
 export const ENT_PROFILE_COUNT = 2;
+/** Official ҰБТ cap: 20 + 10 + 10 + 50 + 50. */
+export const ENT_TOTAL_MAX = 140;
+export const ENT_PROFILE_ONE_POINT_COUNT = 30;
+export const ENT_MAX_BY_BLOCK: Record<EntBlockKind, number> = {
+  history: 20,
+  reading: 10,
+  math_literacy: 10,
+  profile: 50,
+};
+
+export function blockMaxScore(block: EntBlockKind): number {
+  return ENT_MAX_BY_BLOCK[block];
+}
+
+/** Profile Q1–30 = 1 point, Q31+ = 2 points. Mandatory blocks = 1 point each. */
+export function questionWeight(block: EntBlockKind, index: number): number {
+  if (block === "profile" && index >= ENT_PROFILE_ONE_POINT_COUNT) return 2;
+  return 1;
+}
+
+export function groupTestsByEnt<T extends { subject: string }>(rows: T[]) {
+  const byBlock: Record<Exclude<EntBlockKind, "profile">, T[]> = {
+    history: [],
+    reading: [],
+    math_literacy: [],
+  };
+  const profileByKey = new Map<string, T[]>();
+
+  for (const row of rows) {
+    const block = detectEntBlock(row.subject);
+    if (block) {
+      byBlock[block].push(row);
+      continue;
+    }
+    const key = subjectPoolKey(row.subject);
+    if (!key) continue;
+    const list = profileByKey.get(key) ?? [];
+    list.push(row);
+    profileByKey.set(key, list);
+  }
+  return { byBlock, profileByKey };
+}
+
+export interface EntPoolSubject {
+  key: string;
+  labelKz: string;
+  labelRu: string;
+  kind: "mandatory" | "profile";
+  variantCount: number;
+  ready: boolean;
+}
+
+export interface EntPoolCombination {
+  id: string;
+  labelKz: string;
+  labelRu: string;
+  subject1: string;
+  subject2: string;
+  ready: boolean;
+  missing: string[];
+  variantCount1: number;
+  variantCount2: number;
+}
+
+export function uniqueProfileSubjects(): Array<{
+  key: string;
+  labelKz: string;
+  labelRu: string;
+}> {
+  const seen = new Set<string>();
+  const out: Array<{ key: string; labelKz: string; labelRu: string }> = [];
+  for (const combo of ENT_PROFILE_COMBOS) {
+    for (const labelKz of [combo.subject1, combo.subject2]) {
+      const key = subjectPoolKey(labelKz);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const ruCombo = ENT_PROFILE_COMBOS.find(
+        (c) =>
+          subjectPoolKey(c.subject1) === key ||
+          subjectPoolKey(c.subject2) === key,
+      );
+      const labelRu = ruCombo
+        ? subjectPoolKey(ruCombo.subject1) === key
+          ? ruCombo.labelRu.split(" - ")[0]
+          : ruCombo.labelRu.split(" - ")[1]
+        : labelKz;
+      out.push({ key, labelKz, labelRu: (labelRu ?? labelKz).trim() });
+    }
+  }
+  return out;
+}
+
+export function buildEntPoolCoverage<T extends { subject: string }>(rows: T[]) {
+  const { byBlock, profileByKey } = groupTestsByEnt(rows);
+
+  const mandatory = (["history", "reading", "math_literacy"] as const).map(
+    (key) => ({
+      key,
+      label: ENT_BLOCK_LABELS[key],
+      variantCount: byBlock[key].length,
+      ready: byBlock[key].length > 0,
+    }),
+  );
+
+  const profileSubjects: EntPoolSubject[] = uniqueProfileSubjects().map(
+    (row) => {
+      const variantCount = (profileByKey.get(row.key) ?? []).length;
+      return {
+        ...row,
+        kind: "profile" as const,
+        variantCount,
+        ready: variantCount > 0,
+      };
+    },
+  );
+
+  const combinations: EntPoolCombination[] = ENT_PROFILE_COMBOS.map((combo) => {
+    const k1 = subjectPoolKey(combo.subject1);
+    const k2 = subjectPoolKey(combo.subject2);
+    const pool1 = profileByKey.get(k1) ?? [];
+    const pool2 = profileByKey.get(k2) ?? [];
+    const same = k1 === k2;
+    const missing: string[] = [];
+    if (pool1.length === 0) missing.push(combo.subject1);
+    if (!same && pool2.length === 0) missing.push(combo.subject2);
+    return {
+      id: combo.id,
+      labelKz: combo.labelKz,
+      labelRu: combo.labelRu,
+      subject1: combo.subject1,
+      subject2: combo.subject2,
+      ready: missing.length === 0,
+      missing,
+      variantCount1: pool1.length,
+      variantCount2: pool2.length,
+    };
+  });
+
+  return {
+    mandatory,
+    profileSubjects,
+    combinations,
+    missingMandatory: mandatory.filter((m) => !m.ready),
+    missingProfile: profileSubjects.filter((s) => !s.ready),
+    ready:
+      mandatory.every((m) => m.ready) && combinations.some((c) => c.ready),
+  };
+}

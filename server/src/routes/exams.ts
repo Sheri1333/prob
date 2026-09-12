@@ -1,21 +1,35 @@
 import { Router } from "express";
 import { ObjectId } from "mongodb";
-import { attempts, tests, type AttemptDoc, type TestDoc } from "../db.js";
+import {
+  attempts,
+  examSessions,
+  tests,
+  users,
+  type AttemptDoc,
+  type ExamSessionDoc,
+  type ExamSessionSection,
+  type TestDoc,
+} from "../db.js";
 import { authRequired, optionalAuth, type AuthedRequest } from "../auth.js";
 import { newTestId } from "../ids.js";
 import {
+  buildEntPoolCoverage,
   detectEntBlock,
   ENT_BLOCK_LABELS,
-  ENT_PROFILE_COMBOS,
+  ENT_TOTAL_MAX,
   ENT_TOTAL_MINUTES,
   getProfileCombo,
+  groupTestsByEnt,
   subjectPoolKey,
   type EntBlockKind,
 } from "../ent.js";
-import { scoreTest, stripAnswers, type AnswerValue } from "../scoring.js";
+import { scoreEntSection, stripAnswers, type AnswerValue } from "../scoring.js";
 import { getPricing } from "../settings.js";
+import { isBrevoConfigured } from "../brevo.js";
+import { queueMail, sendExamResultEmail } from "../mail.js";
 
 export const examsRouter = Router();
+const SUBMIT_GRACE_MS = 5_000;
 
 examsRouter.get("/pricing", async (_req, res) => {
   res.json(await getPricing());
@@ -27,6 +41,35 @@ function sectionOrder(subject: string): number {
   if (block === "reading") return 1;
   if (block === "math_literacy") return 2;
   return 3;
+}
+
+function blockForSubject(subject: string): EntBlockKind {
+  return detectEntBlock(subject) ?? "profile";
+}
+
+function asAnswers(
+  value: Record<string, unknown> | undefined,
+): Record<string, AnswerValue> {
+  const out: Record<string, AnswerValue> = {};
+  if (!value) return out;
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw === "string" || Array.isArray(raw) || (raw && typeof raw === "object")) {
+      out[key] = raw as AnswerValue;
+    }
+  }
+  return out;
+}
+
+function mergeAnswers(
+  base: Record<string, Record<string, unknown>>,
+  extra?: Record<string, Record<string, AnswerValue>>,
+): Record<string, Record<string, unknown>> {
+  if (!extra) return base;
+  const next: Record<string, Record<string, unknown>> = { ...base };
+  for (const [testId, answers] of Object.entries(extra)) {
+    next[testId] = { ...(next[testId] ?? {}), ...answers };
+  }
+  return next;
 }
 
 function answerLabelsFrom(
@@ -49,20 +92,55 @@ function answerLabelsFrom(
   return labels;
 }
 
+function remainingSeconds(endsAt: Date, now = new Date()): number {
+  return Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / 1000));
+}
+
+function canAccessSession(session: ExamSessionDoc, req: AuthedRequest): boolean {
+  if (!session.userId) return true;
+  if (!req.user) return false;
+  if (req.user.role === "admin") return true;
+  return req.user.id === session.userId.toHexString();
+}
+
+function publicInProgress(session: ExamSessionDoc, now = new Date()) {
+  return {
+    status: "in_progress" as const,
+    sessionId: session._id,
+    durationMinutes: ENT_TOTAL_MINUTES,
+    comboId: session.comboId,
+    profileSubjects: session.profileSubjects,
+    startedAt: session.startedAt.toISOString(),
+    endsAt: session.endsAt.getTime(),
+    remainingSeconds: remainingSeconds(session.endsAt, now),
+    sectionIndex: session.sectionIndex,
+    answersByTest: session.answersByTest,
+    currentIndexByTest: session.currentIndexByTest,
+    sections: session.sections,
+    usedTestIds: session.usedTestIds,
+  };
+}
+
 async function sessionPayload(sessionId: string, rows: AttemptDoc[]) {
   const testIds = [...new Set(rows.map((r) => r.testId))];
   const testDocs = await tests()
     .find({ _id: { $in: testIds } })
     .toArray();
   const byId = new Map(testDocs.map((t) => [t._id, t]));
+  const stored = await examSessions().findOne({ _id: sessionId });
+  const blockByTest = new Map(
+    (stored?.sections ?? []).map((s) => [s.testId, s.block]),
+  );
 
   const sections = [...rows]
     .map((row) => {
       const test = byId.get(row.testId);
       if (!test) return null;
-      const scored = scoreTest(
+      const block = blockByTest.get(row.testId) ?? blockForSubject(test.subject);
+      const scored = scoreEntSection(
+        block,
         test.questions,
-        (row.answers ?? {}) as Record<string, AnswerValue>,
+        asAnswers(row.answers as Record<string, unknown>),
       );
       return {
         attemptId: row._id.toHexString(),
@@ -73,6 +151,7 @@ async function sessionPayload(sessionId: string, rows: AttemptDoc[]) {
         score: row.score,
         maxScore: row.maxScore,
         results: scored.results,
+        points: scored.points,
         answerLabels: answerLabelsFrom(test.questions, row.answers ?? {}),
         questionIds: test.questions.map((q) => q.id),
         questionCount: test.questions.length,
@@ -82,11 +161,15 @@ async function sessionPayload(sessionId: string, rows: AttemptDoc[]) {
     .sort((a, b) => sectionOrder(a.subject) - sectionOrder(b.subject));
 
   const score = sections.reduce((sum, s) => sum + s.score, 0);
-  const maxScore = sections.reduce((sum, s) => sum + s.maxScore, 0);
+  const maxScore = sections.reduce((sum, s) => sum + s.maxScore, 0) || ENT_TOTAL_MAX;
   const startedAt = rows[0]?.startedAt ?? new Date();
-  const finishedAt = rows[0]?.finishedAt ?? new Date();
+  const finishedAt = rows.reduce(
+    (latest, r) => (r.finishedAt > latest ? r.finishedAt : latest),
+    rows[0]?.finishedAt ?? new Date(),
+  );
 
   return {
+    status: "submitted" as const,
     sessionId,
     score,
     maxScore,
@@ -96,10 +179,128 @@ async function sessionPayload(sessionId: string, rows: AttemptDoc[]) {
   };
 }
 
+async function finalizeSession(
+  session: ExamSessionDoc,
+  extraAnswers?: Record<string, Record<string, AnswerValue>>,
+  allowMerge = true,
+) {
+  const existing = await attempts()
+    .find({ sessionId: session._id })
+    .toArray();
+  if (existing.length > 0 || session.status === "submitted") {
+    if (session.status !== "submitted") {
+      await examSessions().updateOne(
+        { _id: session._id },
+        { $set: { status: "submitted", submittedAt: new Date() } },
+      );
+    }
+    return sessionPayload(session._id, existing);
+  }
+
+  const now = new Date();
+  const answersByTest = allowMerge
+    ? mergeAnswers(session.answersByTest, extraAnswers)
+    : session.answersByTest;
+  const finishedAt = now;
+  const results = [];
+  let totalScore = 0;
+  let totalMax = 0;
+
+  for (const section of session.sections) {
+    const row = await tests().findOne({ _id: section.testId });
+    const questions = row?.questions ?? section.questions;
+    const answers = asAnswers(answersByTest[section.testId]);
+    const scored = scoreEntSection(section.block, questions, answers);
+    totalScore += scored.score;
+    totalMax += scored.maxScore;
+
+    const insert = await attempts().insertOne({
+      userId: session.userId,
+      testId: section.testId,
+      answers,
+      score: scored.score,
+      maxScore: scored.maxScore,
+      startedAt: session.startedAt,
+      finishedAt,
+      sessionId: session._id,
+    } as AttemptDoc);
+
+    results.push({
+      attemptId: insert.insertedId.toHexString(),
+      testId: section.testId,
+      subject: section.subject,
+      title: row?.title ?? section.title,
+      titleKz: row?.titleKz ?? section.titleKz,
+      score: scored.score,
+      maxScore: scored.maxScore,
+      results: scored.results,
+      points: scored.points,
+      answerLabels: answerLabelsFrom(questions, answers),
+      questionIds: questions.map((q) => q.id),
+      questionCount: questions.length,
+    });
+  }
+
+  await examSessions().updateOne(
+    { _id: session._id },
+    {
+      $set: {
+        status: "submitted",
+        submittedAt: finishedAt,
+        answersByTest,
+      },
+    },
+  );
+
+  if (session.userId && isBrevoConfigured()) {
+    const user = await users().findOne({ _id: session.userId });
+    if (user) {
+      queueMail(
+        sendExamResultEmail({
+          email: user.email,
+          name: user.name,
+          score: totalScore,
+          maxScore: totalMax || ENT_TOTAL_MAX,
+          sessionId: session._id,
+        }),
+      );
+    }
+  }
+
+  return {
+    status: "submitted" as const,
+    sessionId: session._id,
+    score: totalScore,
+    maxScore: totalMax || ENT_TOTAL_MAX,
+    startedAt: session.startedAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
+    sections: results,
+  };
+}
+
+async function loadAndMaybeExpire(sessionId: string) {
+  const session = await examSessions().findOne({ _id: sessionId });
+  if (!session) return null;
+  if (
+    session.status === "in_progress" &&
+    Date.now() > session.endsAt.getTime() + SUBMIT_GRACE_MS
+  ) {
+    return {
+      session,
+      expired: true as const,
+      result: await finalizeSession(session, undefined, false),
+    };
+  }
+  return { session, expired: false as const };
+}
+
 examsRouter.get("/history", authRequired, async (req: AuthedRequest, res) => {
   const userId = new ObjectId(req.user!.id);
   const rows = await attempts()
-    .find({ userId, sessionId: { $exists: true, $nin: [null, ""] } })
+    .find({
+      userId,
+      sessionId: { $exists: true, $type: "string", $ne: "" },
+    })
     .sort({ finishedAt: -1 })
     .toArray();
 
@@ -115,7 +316,8 @@ examsRouter.get("/history", authRequired, async (req: AuthedRequest, res) => {
   const sessions = [...groups.entries()]
     .map(([sessionId, list]) => {
       const score = list.reduce((sum, r) => sum + r.score, 0);
-      const maxScore = list.reduce((sum, r) => sum + r.maxScore, 0);
+      const maxScore =
+        list.reduce((sum, r) => sum + r.maxScore, 0) || ENT_TOTAL_MAX;
       const finishedAt = list.reduce(
         (latest, r) => (r.finishedAt > latest ? r.finishedAt : latest),
         list[0].finishedAt,
@@ -138,17 +340,114 @@ examsRouter.get("/history", authRequired, async (req: AuthedRequest, res) => {
   res.json({ sessions });
 });
 
-examsRouter.get("/sessions/:sessionId", authRequired, async (req: AuthedRequest, res) => {
-  const sessionId = req.params.sessionId;
-  const userId = new ObjectId(req.user!.id);
-  const rows = await attempts()
-    .find({ sessionId, userId })
-    .toArray();
+examsRouter.get("/active", optionalAuth, async (req: AuthedRequest, res) => {
+  if (!req.user) {
+    res.json({ session: null });
+    return;
+  }
+  const session = await examSessions().findOne({
+    userId: new ObjectId(req.user.id),
+    status: "in_progress",
+  });
+  if (!session) {
+    res.json({ session: null });
+    return;
+  }
+  const loaded = await loadAndMaybeExpire(session._id);
+  if (!loaded || loaded.expired) {
+    res.json({ session: null });
+    return;
+  }
+  res.json({ session: publicInProgress(loaded.session) });
+});
+
+examsRouter.get("/sessions/:sessionId", optionalAuth, async (req: AuthedRequest, res) => {
+  const sessionId = String(req.params.sessionId ?? "");
+  const loaded = await loadAndMaybeExpire(sessionId);
+  if (loaded) {
+    if (!canAccessSession(loaded.session, req)) {
+      res.status(403).json({ error: "Нет доступа к этой сессии" });
+      return;
+    }
+    if (loaded.expired) {
+      res.json(loaded.result);
+      return;
+    }
+    if (loaded.session.status === "in_progress") {
+      res.json(publicInProgress(loaded.session));
+      return;
+    }
+  }
+
+  const rows = await attempts().find({ sessionId }).toArray();
   if (rows.length === 0) {
     res.status(404).json({ error: "Сессия не найдена" });
     return;
   }
+  if (loaded && !canAccessSession(loaded.session, req)) {
+    res.status(403).json({ error: "Нет доступа к этой сессии" });
+    return;
+  }
   res.json(await sessionPayload(sessionId, rows));
+});
+
+examsRouter.patch("/sessions/:sessionId", optionalAuth, async (req: AuthedRequest, res) => {
+  const loaded = await loadAndMaybeExpire(String(req.params.sessionId ?? ""));
+  if (!loaded) {
+    res.status(404).json({ error: "Сессия не найдена" });
+    return;
+  }
+  if (!canAccessSession(loaded.session, req)) {
+    res.status(403).json({ error: "Нет доступа к этой сессии" });
+    return;
+  }
+  if (loaded.expired) {
+    res.json(loaded.result);
+    return;
+  }
+  if (loaded.session.status !== "in_progress") {
+    const rows = await attempts().find({ sessionId: loaded.session._id }).toArray();
+    res.json(await sessionPayload(loaded.session._id, rows));
+    return;
+  }
+
+  const body = (req.body ?? {}) as {
+    sectionIndex?: number;
+    answersByTest?: Record<string, Record<string, AnswerValue>>;
+    currentIndexByTest?: Record<string, number>;
+  };
+  const now = new Date();
+  const allowMerge = now.getTime() <= loaded.session.endsAt.getTime() + SUBMIT_GRACE_MS;
+  const answersByTest = allowMerge
+    ? mergeAnswers(loaded.session.answersByTest, body.answersByTest)
+    : loaded.session.answersByTest;
+  const sectionIndex =
+    typeof body.sectionIndex === "number"
+      ? Math.max(0, Math.min(loaded.session.sections.length - 1, body.sectionIndex))
+      : loaded.session.sectionIndex;
+  const currentIndexByTest = {
+    ...loaded.session.currentIndexByTest,
+    ...(body.currentIndexByTest ?? {}),
+  };
+
+  await examSessions().updateOne(
+    { _id: loaded.session._id },
+    { $set: { answersByTest, sectionIndex, currentIndexByTest } },
+  );
+
+  if (!allowMerge) {
+    res.json(await finalizeSession({ ...loaded.session, answersByTest }, undefined, false));
+    return;
+  }
+
+  res.json(
+    publicInProgress({
+      ...loaded.session,
+      answersByTest,
+      sectionIndex,
+      currentIndexByTest,
+    }),
+  );
 });
 
 function pickVariant(
@@ -161,69 +460,14 @@ function pickVariant(
   return source[Math.floor(Math.random() * source.length)] ?? null;
 }
 
-function groupTests(rows: TestDoc[]) {
-  const byBlock: Record<string, TestDoc[]> = {
-    history: [],
-    reading: [],
-    math_literacy: [],
-  };
-  const profileByKey = new Map<string, TestDoc[]>();
-
-  for (const row of rows) {
-    const block = detectEntBlock(row.subject);
-    if (block) {
-      byBlock[block].push(row);
-      continue;
-    }
-    const key = subjectPoolKey(row.subject);
-    if (!key) continue;
-    const list = profileByKey.get(key) ?? [];
-    list.push(row);
-    profileByKey.set(key, list);
-  }
-  return { byBlock, profileByKey };
-}
-
 examsRouter.get("/blueprint", optionalAuth, async (_req: AuthedRequest, res) => {
   const rows = await tests().find().toArray();
-  const { byBlock, profileByKey } = groupTests(rows);
-
-  const mandatory = (
-    ["history", "reading", "math_literacy"] as const
-  ).map((key) => ({
-    key,
-    label: ENT_BLOCK_LABELS[key],
-    variantCount: byBlock[key].length,
-    ready: byBlock[key].length > 0,
-  }));
-
-  const combinations = ENT_PROFILE_COMBOS.map((combo) => {
-    const k1 = subjectPoolKey(combo.subject1);
-    const k2 = subjectPoolKey(combo.subject2);
-    const pool1 = profileByKey.get(k1) ?? [];
-    const pool2 = profileByKey.get(k2) ?? [];
-    const same = k1 === k2;
-    const ready = same
-      ? pool1.length >= 1
-      : pool1.length > 0 && pool2.length > 0;
-    return {
-      id: combo.id,
-      labelKz: combo.labelKz,
-      labelRu: combo.labelRu,
-      subject1: combo.subject1,
-      subject2: combo.subject2,
-      ready,
-      variantCount1: pool1.length,
-      variantCount2: pool2.length,
-    };
-  });
-
+  const coverage = buildEntPoolCoverage(rows);
   res.json({
     durationMinutes: ENT_TOTAL_MINUTES,
-    mandatory,
-    combinations,
-    ready:
-      mandatory.every((m) => m.ready) && combinations.some((c) => c.ready),
+    mandatory: coverage.mandatory,
+    combinations: coverage.combinations,
+    ready: coverage.ready,
   });
 });
 
@@ -255,15 +499,20 @@ examsRouter.post("/start", optionalAuth, async (req: AuthedRequest, res) => {
   );
 
   if (req.user) {
+    const userId = new ObjectId(req.user.id);
     const past = await attempts()
-      .find({ userId: new ObjectId(req.user.id) })
+      .find({ userId })
       .project({ testId: 1 })
       .toArray();
     for (const a of past) used.add(a.testId);
+    await examSessions().updateMany(
+      { userId, status: "in_progress" },
+      { $set: { status: "abandoned" } },
+    );
   }
 
   const rows = await tests().find().toArray();
-  const { byBlock, profileByKey } = groupTests(rows);
+  const { byBlock, profileByKey } = groupTestsByEnt(rows);
 
   const sections: Array<{
     block: EntBlockKind;
@@ -314,27 +563,39 @@ examsRouter.post("/start", optionalAuth, async (req: AuthedRequest, res) => {
     });
   }
 
-  const sessionId = newTestId();
   const questionDocs = await tests()
     .find({ _id: { $in: sections.map((s) => s.testId) } })
     .toArray();
   const byId = new Map(questionDocs.map((t) => [t._id, t]));
+  const now = new Date();
+  const storedSections: ExamSessionSection[] = sections.map((s) => {
+    const doc = byId.get(s.testId)!;
+    return {
+      ...s,
+      questions: stripAnswers(doc.questions),
+    };
+  });
 
-  res.status(201).json({
-    sessionId,
-    durationMinutes: ENT_TOTAL_MINUTES,
+  const sessionId = newTestId();
+  const session: ExamSessionDoc = {
+    _id: sessionId,
+    userId: req.user ? new ObjectId(req.user.id) : null,
     comboId: body.comboId ?? null,
     profileSubjects: profileLabels,
-    startedAt: new Date().toISOString(),
-    endsAt: Date.now() + ENT_TOTAL_MINUTES * 60 * 1000,
-    sections: sections.map((s) => {
-      const doc = byId.get(s.testId)!;
-      return {
-        ...s,
-        questions: stripAnswers(doc.questions),
-      };
-    }),
-  });
+    startedAt: now,
+    endsAt: new Date(now.getTime() + ENT_TOTAL_MINUTES * 60 * 1000),
+    status: "in_progress",
+    sectionIndex: 0,
+    answersByTest: Object.fromEntries(storedSections.map((s) => [s.testId, {}])),
+    currentIndexByTest: Object.fromEntries(
+      storedSections.map((s) => [s.testId, 0]),
+    ),
+    sections: storedSections,
+    usedTestIds: storedSections.map((s) => s.testId),
+  };
+  await examSessions().insertOne(session);
+
+  res.status(201).json(publicInProgress(session, now));
 });
 
 examsRouter.post("/submit", optionalAuth, async (req: AuthedRequest, res) => {
@@ -347,77 +608,37 @@ examsRouter.post("/submit", optionalAuth, async (req: AuthedRequest, res) => {
     }>;
   };
 
-  if (!body.sessionId || !Array.isArray(body.sections) || body.sections.length === 0) {
-    res.status(400).json({ error: "sessionId и sections обязательны" });
+  if (!body.sessionId) {
+    res.status(400).json({ error: "sessionId обязателен" });
     return;
   }
 
-  const finishedAt = new Date();
-  const started = body.startedAt ? new Date(body.startedAt) : finishedAt;
-  const userId = req.user ? new ObjectId(req.user.id) : null;
-
-  const results = [];
-  let totalScore = 0;
-  let totalMax = 0;
-
-  for (const section of body.sections) {
-    const row = await tests().findOne({ _id: section.testId });
-    if (!row) {
-      res.status(404).json({ error: `Тест не найден: ${section.testId}` });
-      return;
-    }
-    const scored = scoreTest(row.questions, section.answers ?? {});
-    totalScore += scored.score;
-    totalMax += scored.maxScore;
-
-    const insert = await attempts().insertOne({
-      userId,
-      testId: section.testId,
-      answers: section.answers ?? {},
-      score: scored.score,
-      maxScore: scored.maxScore,
-      startedAt: started,
-      finishedAt,
-      sessionId: body.sessionId,
-    });
-
-    const answerLabels: Record<number, string> = {};
-    for (const q of row.questions) {
-      const ans = section.answers?.[String(q.id)];
-      if (ans === undefined) {
-        answerLabels[q.id] = "";
-        continue;
-      }
-      if (typeof ans === "string") {
-        answerLabels[q.id] = ans;
-      } else if (Array.isArray(ans)) {
-        answerLabels[q.id] = ans.join(",");
-      } else {
-        answerLabels[q.id] = Object.values(ans).join(",");
-      }
-    }
-
-    results.push({
-      attemptId: insert.insertedId.toHexString(),
-      testId: row._id,
-      subject: row.subject,
-      title: row.title,
-      titleKz: row.titleKz,
-      score: scored.score,
-      maxScore: scored.maxScore,
-      results: scored.results,
-      answerLabels,
-      questionIds: row.questions.map((q) => q.id),
-      questionCount: row.questions.length,
-    });
+  const extraAnswers: Record<string, Record<string, AnswerValue>> = {};
+  for (const section of body.sections ?? []) {
+    extraAnswers[section.testId] = section.answers ?? {};
   }
 
-  res.status(201).json({
-    sessionId: body.sessionId,
-    score: totalScore,
-    maxScore: totalMax,
-    startedAt: started.toISOString(),
-    finishedAt: finishedAt.toISOString(),
-    sections: results,
-  });
+  const loaded = await loadAndMaybeExpire(body.sessionId);
+  if (loaded) {
+    if (!canAccessSession(loaded.session, req)) {
+      res.status(403).json({ error: "Нет доступа к этой сессии" });
+      return;
+    }
+    if (loaded.expired) {
+      res.json(loaded.result);
+      return;
+    }
+    const now = new Date();
+    const allowMerge = now.getTime() <= loaded.session.endsAt.getTime() + SUBMIT_GRACE_MS;
+    res.status(201).json(await finalizeSession(loaded.session, extraAnswers, allowMerge));
+    return;
+  }
+
+  const existing = await attempts().find({ sessionId: body.sessionId }).toArray();
+  if (existing.length > 0) {
+    res.json(await sessionPayload(body.sessionId, existing));
+    return;
+  }
+
+  res.status(404).json({ error: "Сессия не найдена" });
 });
