@@ -11,7 +11,7 @@ echo "==> $(date -Iseconds) deploy in $ROOT"
 
 git fetch origin
 git checkout main
-git pull --ff-only origin main
+git reset --hard origin/main
 
 npm ci
 npm ci --prefix server
