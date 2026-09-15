@@ -100,11 +100,12 @@ adminRouter.post("/email/test", async (req: AuthedRequest, res) => {
   try {
     await sendSmtpEmail({
       to: { email: to, name: req.user?.name },
-      subject: "Talapker · тест Brevo",
+      subject: "Talapker: почта работает / email жумыс істейді",
       tags: ["admin-test"],
+      text: "Это тестовое письмо от Талапкер. Почта подключена и письма доходят.\nБұл Талапкердің тест хаты. Пошта қосылған, хаттар жетеді.",
       html: asEmailHtml(
-        "Brevo подключен",
-        "<p>Это тестовое письмо от Талапкер. Транзакционная почта работает.</p>",
+        "Пошта қосылды",
+        "<p>Бұл Талапкердің тест хаты. Пошта жұмыс істейді.</p><p>Это тестовое письмо от Талапкер. Почта подключена, письма доходят.</p>",
       ),
     });
     res.json({ ok: true, to });

@@ -2,7 +2,11 @@ import { sendSmtpEmail, upsertContact, publicAppUrl } from "./brevo.js";
 
 function wrap(title: string, body: string): string {
   return `<!doctype html>
-<html>
+<html lang="kk">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  </head>
   <body style="margin:0;background:#f4f6fb;font-family:Arial,sans-serif;color:#1b2437;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6fb;padding:24px 12px;">
       <tr>
@@ -21,7 +25,7 @@ function wrap(title: string, body: string): string {
             </tr>
             <tr>
               <td style="padding:16px 28px 24px;color:#7b8499;font-size:12px;">
-                Talapker · пробное ҰБТ
+                Talapker · пробное ЕНТ / ҰБТ
               </td>
             </tr>
           </table>
@@ -51,14 +55,16 @@ export async function sendWelcomeEmail(params: {
   verifyToken: string;
 }): Promise<void> {
   const href = `${publicAppUrl()}/verify?token=${encodeURIComponent(params.verifyToken)}`;
+  const name = escapeHtml(params.name.split(/\s+/)[0] || params.name);
   await sendSmtpEmail({
     to: { email: params.email, name: params.name },
-    subject: "Талапкер — подтвердите email / email-ді растаңыз",
+    subject: "Талапкер: растаңыз email / подтвердите почту",
     tags: ["welcome", "verify"],
+    text: `Сәлем, ${params.name}!\n\nТалапкерде тіркелдіңіз. Email-ді растау үшін сілтемені ашыңыз:\n${href}\n\nВы зарегистрировались в Талапкер. Откройте ссылку, чтобы подтвердить почту.`,
     html: wrap(
-      `Сәлем, ${escapeHtml(params.name.split(/\s+/)[0] || params.name)}!`,
-      `<p>Сіз Талапкерде тіркелдіңіз. ҰБТ пробныйын бастау үшін email-ді растаңыз.</p>
-       <p>Вы зарегистрировались в Талапкер. Подтвердите почту, чтобы получать результаты и восстановление пароля.</p>
+      `Сәлем, ${name}!`,
+      `<p>Талапкерде тіркелдіңіз. Email-ді растаңыз — содан кейін нәтиже мен парольді қалпына келтіру жұмыс істейді.</p>
+       <p>Вы зарегистрировались в Талапкер. Подтвердите почту, чтобы получать результаты и сбрасывать пароль.</p>
        ${button(href, "Растау / Подтвердить")}`,
     ),
   });
@@ -72,8 +78,9 @@ export async function sendVerifyEmail(params: {
   const href = `${publicAppUrl()}/verify?token=${encodeURIComponent(params.verifyToken)}`;
   await sendSmtpEmail({
     to: { email: params.email, name: params.name },
-    subject: "Талапкер — растау сілтемесі / ссылка подтверждения",
+    subject: "Талапкер: растаңыз email / подтвердите почту",
     tags: ["verify"],
+    text: `Email-ді растаңыз. Сілтеме 48 сағат жарамды:\n${href}\n\nПодтвердите почту. Ссылка действует 48 часов.`,
     html: wrap(
       "Email-ді растаңыз",
       `<p>Жаңа растау сілтемесі дайын. Сілтеме 48 сағат бойы жарамды.</p>
@@ -91,8 +98,9 @@ export async function sendResetEmail(params: {
   const href = `${publicAppUrl()}/reset?token=${encodeURIComponent(params.resetToken)}`;
   await sendSmtpEmail({
     to: { email: params.email, name: params.name },
-    subject: "Талапкер — парольді қалпына келтіру / сброс пароля",
+    subject: "Талапкер: жаңа пароль / сброс пароля",
     tags: ["reset"],
+    text: `Парольді өзгерту сілтемесі (1 сағат):\n${href}\n\nСсылка для смены пароля действует 1 час. Если это были не вы — проигнорируйте письмо.`,
     html: wrap(
       "Жаңа пароль",
       `<p>Егер бұл сіз болмасаңыз — хатты елемеңіз. Сілтеме 1 сағат бойы жарамды.</p>
@@ -112,8 +120,9 @@ export async function sendExamResultEmail(params: {
   const href = `${publicAppUrl()}/exam/results/${encodeURIComponent(params.sessionId)}`;
   await sendSmtpEmail({
     to: { email: params.email, name: params.name },
-    subject: `Талапкер — нәтиже ${params.score}/${params.maxScore}`,
+    subject: `Талапкер: нәтиже ${params.score}/${params.maxScore}`,
     tags: ["exam-result"],
+    text: `${params.name}, сіздің баллыңыз: ${params.score} / ${params.maxScore}\nРезультат пробного ЕНТ: ${params.score} / ${params.maxScore}\n${href}`,
     html: wrap(
       "ҰБТ нәтижесі дайын",
       `<p>${escapeHtml(params.name)}, сіздің баллыңыз: <strong>${params.score} / ${params.maxScore}</strong>.</p>

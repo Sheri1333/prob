@@ -41,7 +41,9 @@ async function brevoRequest<T>(
       "api-key": apiKey(),
       Accept: "application/json",
       "User-Agent": "Talapker/1.0",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.body
+        ? { "Content-Type": "application/json; charset=utf-8" }
+        : {}),
       ...init.headers,
     },
   });
@@ -64,6 +66,7 @@ export async function sendSmtpEmail(params: {
   to: { email: string; name?: string };
   subject: string;
   html: string;
+  text?: string;
   tags?: string[];
 }): Promise<void> {
   const sender = brevoSender();
@@ -74,6 +77,7 @@ export async function sendSmtpEmail(params: {
       to: [params.to],
       subject: params.subject,
       htmlContent: params.html,
+      textContent: params.text,
       tags: params.tags,
     }),
   });
