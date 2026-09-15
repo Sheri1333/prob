@@ -3371,12 +3371,12 @@ label.admin-btn--primary:hover {
   }
 
   .pricing__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     max-width: none;
   }
 
   .pricing-card--featured {
-    grid-column: 1 / -1;
+    grid-column: auto;
   }
 
   .landing-features__grid {
