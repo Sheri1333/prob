@@ -66,7 +66,6 @@ export function AdminPage() {
   const [pool, setPool] = useState<Awaited<
     ReturnType<typeof api.adminPool>
   > | null>(null);
-  const [bulkKeysText, setBulkKeysText] = useState("");
   const [importingKeys, setImportingKeys] = useState(false);
   const [keysModal, setKeysModal] = useState<{
     id: string;
@@ -304,29 +303,6 @@ export function AdminPage() {
       setTests((await api.adminTests()).tests);
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Ошибка дублирования");
-    }
-  }
-
-  async function handleBulkKeysImport() {
-    if (!bulkKeysText.trim()) return;
-    setImportingKeys(true);
-    try {
-      const result = await api.adminImportKeys(bulkKeysText);
-      const failed = result.results.filter((r) => !r.ok);
-      toast(
-        failed.length ? "error" : "ok",
-        failed.length
-          ? `Импорт: ${result.imported} ок, ${failed.length} с ошибкой`
-          : `Ключи импортированы в ${result.imported} тест(ов)`,
-      );
-      if (result.imported > 0) {
-        setBulkKeysText("");
-        setPool(await api.adminPool());
-      }
-    } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Ошибка импорта ключей");
-    } finally {
-      setImportingKeys(false);
     }
   }
 
@@ -716,13 +692,6 @@ export function AdminPage() {
                   {filteredTests.length} из {tests.length} в каталоге
                 </p>
               </div>
-              <button
-                type="button"
-                className="admin-btn admin-btn--primary"
-                onClick={startManual}
-              >
-                Создать тест
-              </button>
             </div>
             {pool && (pool.missingMandatory.length > 0 || pool.missingProfile.length > 0) && (
               <p className="admin-alert admin-alert--error">
@@ -733,31 +702,9 @@ export function AdminPage() {
                 ].join(", ")}
               </p>
             )}
-            <div className="admin-panel admin-keys-import">
-              <h2>Массовый импорт ключей</h2>
-              <p className="admin-hint">
-                JSON вида {"{ \"id-теста\": \"1-A 2-B 3-CD\", ... }"} или ключи
-                по строкам: 1-A, 2-B, 31-1A,2C.
-              </p>
-              <textarea
-                rows={6}
-                value={bulkKeysText}
-                spellCheck={false}
-                placeholder='{ "test-uuid": "1-A 2-C 3-B" }'
-                onChange={(e) => setBulkKeysText(e.target.value)}
-              />
-              <button
-                type="button"
-                className="admin-btn admin-btn--primary"
-                disabled={importingKeys || !bulkKeysText.trim()}
-                onClick={() => void handleBulkKeysImport()}
-              >
-                {importingKeys ? "Импорт..." : "Импортировать ключи"}
-              </button>
-            </div>
             {tests.length === 0 ? (
               <div className="admin-empty">
-                Пока нет тестов. Создайте вручную или загрузите PDF.
+                Пока нет тестов.
               </div>
             ) : (
               <>
