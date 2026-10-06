@@ -232,7 +232,7 @@ export function AdminPage() {
       setTab("editor");
       toast(
         "ok",
-        `PDF разобран: ${result.parse.questions.length} вопросов, жёлтых ключей: ${result.parse.keysFromHighlight ?? 0}`,
+        `PDF разобран: ${result.parse.questions.length} вопросов, ключей из PDF: ${result.parse.keysFromHighlight ?? 0}`,
       );
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Ошибка разбора PDF");
@@ -847,9 +847,10 @@ export function AdminPage() {
                 <article className="admin-create-card">
                   <h2>Из PDF</h2>
                   <p>
-                    Парсер вытащит вопросы и картинки. Жёлтый маркер — ключ для
-                    выбора; красный/зелёный текст — для сәйкестендіру. Если
-                    неуверен — ключ пустой (карта с буквами и т.п. — вручную).
+                    Парсер вытащит вопросы и картинки. Ключ для выбора — жёлтый
+                    маркер или жирный шрифт; красный/зелёный текст — для
+                    сәйкестендіру. Если неуверен — ключ пустой (карта с буквами
+                    и т.п. — вручную).
                   </p>
                   <label className="admin-btn admin-btn--primary">
                     {parsing ? "Разбор PDF..." : "Выбрать PDF"}
@@ -883,7 +884,7 @@ export function AdminPage() {
                       <strong>{parseResult.parse.questions.length}</strong>
                     </span>
                     <span>
-                      Жёлтых ключей:{" "}
+                      Ключей из PDF:{" "}
                       <strong>
                         {parseResult.parse.keysFromHighlight ?? 0}
                       </strong>

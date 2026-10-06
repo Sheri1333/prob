@@ -1113,6 +1113,64 @@ function applyColorPairMatchingKeys(
   return keyed;
 }
 
+/**
+ * Answers typed in bold ("В) Ф.Магеллан" in bold, others regular). Bold option
+ * lines are matched to questions in document order, so a repeated label
+ * ("Алматы") resolves to the nearest question that has it.
+ * Returns how many questions got a key.
+ */
+function applyBoldAnswerKeys(
+  questions: ParsedQuestion[],
+  extract: HighlightExtract,
+): number {
+  const choice = questions.filter(
+    (q) => q.type === "single_choice" || q.type === "multiple_choice",
+  );
+  if (choice.length === 0 || extract.boldLines.length === 0) return 0;
+
+  const picked = new Map<number, Set<string>>();
+  let cursor = 0;
+  for (const line of extract.boldLines) {
+    const m = /^\s*([A-Fa-fАВСЕавсе])\s*\)\s*(.*)$/.exec(line.text);
+    if (!m) continue;
+    const letter = normalizeLetter(m[1]);
+    const label = normalizeForMatch(m[2]);
+    // Look a few questions ahead of the last match, never behind it.
+    for (let i = cursor; i < Math.min(choice.length, cursor + 4); i++) {
+      const option = choice[i].options.find((o) => o.id === letter);
+      if (!option) continue;
+      const optLabel = normalizeForMatch(option.label);
+      const same =
+        label.length === 0 ||
+        optLabel === label ||
+        (label.length >= 3 && (optLabel.startsWith(label) || label.startsWith(optLabel)));
+      if (!same) continue;
+      const set = picked.get(choice[i].id) ?? new Set<string>();
+      set.add(letter);
+      picked.set(choice[i].id, set);
+      cursor = i;
+      break;
+    }
+  }
+
+  let keyed = 0;
+  for (const q of choice) {
+    const letters = picked.get(q.id);
+    if (!letters || letters.size === 0) continue;
+    // A real key never marks every option.
+    if (letters.size >= q.options.length) continue;
+    if (q.type === "single_choice") {
+      if (letters.size !== 1 || q.detectedAnswer) continue;
+      q.detectedAnswer = [...letters][0];
+    } else {
+      if (q.detectedAnswers?.length) continue;
+      q.detectedAnswers = [...letters].sort();
+    }
+    keyed += 1;
+  }
+  return keyed;
+}
+
 export async function parsePdfBuffer(buffer: Buffer): Promise<ParsePdfResult> {
   const parser = new PDFParse({ data: buffer });
   try {
@@ -1169,15 +1227,17 @@ export async function parsePdfBuffer(buffer: Buffer): Promise<ParsePdfResult> {
         }
         keyed += applyColorPairMatchingKeys(result.questions, extract);
       }
+      const boldKeyed = applyBoldAnswerKeys(result.questions, extract);
+      keyed += boldKeyed;
       result.keysFromHighlight = keyed;
       const colored = extract.coloredText.length;
       result.steps.push({
         step: 6,
-        name: "Жёлтые ключи",
+        name: "Ключи из PDF",
         detail:
-          extract.hits.length === 0 && colored === 0
-            ? "жёлтых/цветных пометок не найдено"
-            : `пометок ${extract.hits.length}, цветных ${colored}, ключей проставлено: ${keyed}`,
+          extract.hits.length === 0 && colored === 0 && boldKeyed === 0
+            ? "жёлтых/цветных/жирных пометок не найдено"
+            : `жёлтых ${extract.hits.length}, цветных ${colored}, жирных ответов ${boldKeyed}; ключей проставлено: ${keyed}`,
       });
     } catch (err) {
       console.warn("Yellow highlight parse failed", err);

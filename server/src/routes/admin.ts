@@ -20,6 +20,16 @@ import {
 import { asEmailHtml, syncUserToBrevo } from "../mail.js";
 
 export const adminRouter = Router();
+
+/**
+ * Multer decodes multipart filenames as latin1, so "№1 География.pdf" arrives
+ * as mojibake. Re-read the bytes as UTF-8 when that yields valid text.
+ */
+function decodeUploadName(name: string): string {
+  if (!name || /[^\u0000-ÿ]/.test(name)) return name;
+  const decoded = Buffer.from(name, "latin1").toString("utf8");
+  return decoded.includes("�") ? name : decoded;
+}
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15_000_000 },
@@ -658,7 +668,7 @@ adminRouter.post("/files", (req, res, next) => {
     const kind = req.body?.kind === "cover" ? "cover" : "question";
     const stored = await storeImage({
       buffer: req.file.buffer,
-      filename: req.file.originalname || "image",
+      filename: decodeUploadName(req.file.originalname) || "image",
       contentType: req.file.mimetype,
       metadata: { kind },
     });
@@ -701,7 +711,8 @@ adminRouter.post("/tests/parse-pdf", upload.single("file"), async (req, res) => 
       res.status(400).json({ error: "Файл не загружен (field: file)" });
       return;
     }
-    if (!/\.pdf$/i.test(req.file.originalname) && req.file.mimetype !== "application/pdf") {
+    const filename = decodeUploadName(req.file.originalname);
+    if (!/\.pdf$/i.test(filename) && req.file.mimetype !== "application/pdf") {
       res.status(400).json({ error: "Нужен PDF-файл" });
       return;
     }
@@ -720,21 +731,21 @@ adminRouter.post("/tests/parse-pdf", upload.single("file"), async (req, res) => 
       parsed.title && parsed.title.length <= 40 ? parsed.title : "География";
     const draft = {
       id: newTestId(),
-      title: `ҰБТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
-      titleKz: `ҰБТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
+      title: `ҰБТ — ${filename.replace(/\.pdf$/i, "")}`,
+      titleKz: `ҰБТ — ${filename.replace(/\.pdf$/i, "")}`,
       section: subject,
       examType: "ENT",
       subject,
       durationMinutes: 50,
       isFree: true,
       priceTenge: null as number | null,
-      description: `Импорт из PDF «${req.file.originalname}». Ключи ответов отмечаются вручную в админке.`,
+      description: `Импорт из PDF «${filename}».`,
       questions: toTestQuestions(parsed.questions),
     };
 
     res.json({
       ok: true,
-      filename: req.file.originalname,
+      filename: filename,
       parse: parsed,
       draft,
     });

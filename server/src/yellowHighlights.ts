@@ -27,6 +27,14 @@ export interface HighlightExtract {
   hits: HighlightHit[];
   markers: QuestionMarker[];
   coloredText: ColoredTextHit[];
+  /** Text lines set mostly in a bold font (answers marked in bold). */
+  boldLines: BoldLine[];
+}
+
+export interface BoldLine {
+  page: number;
+  y: number;
+  text: string;
 }
 
 interface Rgb {
@@ -48,6 +56,42 @@ interface TextRun {
   y0: number;
   x1: number;
   y1: number;
+  bold?: boolean;
+}
+
+function isBoldFont(page: { commonObjs: { get: (id: string) => unknown } }, fontName: string): boolean {
+  try {
+    const font = page.commonObjs.get(fontName) as { name?: string; bold?: boolean } | null;
+    return Boolean(font?.bold || /bold|black|heavy|semibold/i.test(font?.name ?? ""));
+  } catch {
+    return /bold/i.test(fontName);
+  }
+}
+
+/** Lines (same baseline) where most visible characters use a bold font. */
+function boldLinesFromRuns(pageNum: number, runs: TextRun[]): BoldLine[] {
+  const lines: { y: number; runs: TextRun[] }[] = [];
+  for (const run of runs) {
+    if (!run.str.trim()) continue;
+    const line = lines.find((l) => Math.abs(l.y - run.y0) < 2.5);
+    if (line) line.runs.push(run);
+    else lines.push({ y: run.y0, runs: [run] });
+  }
+  const out: BoldLine[] = [];
+  for (const line of lines.sort((a, b) => b.y - a.y)) {
+    const sorted = line.runs.sort((a, b) => a.x0 - b.x0);
+    let bold = 0;
+    let total = 0;
+    for (const run of sorted) {
+      const n = run.str.replace(/\s/g, "").length;
+      total += n;
+      if (run.bold) bold += n;
+    }
+    if (total > 0 && bold / total >= 0.6) {
+      out.push({ page: pageNum, y: line.y, text: sorted.map((r) => r.str).join("") });
+    }
+  }
+  return out;
 }
 
 function toUnit(n: number): number {
@@ -441,10 +485,13 @@ export async function extractYellowHighlights(
   const hits: HighlightHit[] = [];
   const markers: QuestionMarker[] = [];
   const coloredText: ColoredTextHit[] = [];
+  const boldLines: BoldLine[] = [];
 
   try {
     for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
       const page = await doc.getPage(pageNum);
+      // Loads the page fonts into commonObjs so bold faces can be detected.
+      const opList = await page.getOperatorList();
       const textContent = await page.getTextContent();
       const runs: TextRun[] = [];
       const items = textContent.items;
@@ -456,7 +503,14 @@ export async function extractYellowHighlights(
         const y = tm[5];
         const w = item.width ?? 0;
         const h = item.height || Math.abs(tm[3]) || 10;
-        runs.push({ str: item.str, x0: x, y0: y, x1: x + w, y1: y + h });
+        runs.push({
+          str: item.str,
+          x0: x,
+          y0: y,
+          x1: x + w,
+          y1: y + h,
+          bold: isBoldFont(page, item.fontName),
+        });
 
         let id: number | null = null;
         const num = item.str.match(/(\d{1,2})\s*\./);
@@ -492,8 +546,8 @@ export async function extractYellowHighlights(
         rects.push(...annotationRects(annot as never));
       }
 
-      const opList = await page.getOperatorList();
       rects.push(...yellowRectsFromOps(opList));
+      boldLines.push(...boldLinesFromRuns(pageNum, runs));
       const canvasFactory = (
         doc as unknown as {
           canvasFactory?: {
@@ -555,5 +609,5 @@ export async function extractYellowHighlights(
     await doc.destroy();
   }
 
-  return { hits, markers, coloredText };
+  return { hits, markers, coloredText, boldLines };
 }
