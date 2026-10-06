@@ -24,7 +24,7 @@ const strings = {
   correct: { kz: "Дұрыс", ru: "Верно" },
   incorrect: { kz: "Қате", ru: "Неверно" },
   unanswered: { kz: "Жауапсыз", ru: "Без ответа" },
-  backToCatalog: { kz: "Кatalogқа оралу", ru: "В каталог" },
+  backToCatalog: { kz: "Каталогқа оралу", ru: "В каталог" },
   history: { kz: "Тарих", ru: "История" },
   yourAnswer: { kz: "Сіздің жауабыңыз", ru: "Ваш ответ" },
   correctAnswer: { kz: "Дұрыс жауап", ru: "Правильный ответ" },

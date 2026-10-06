@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { attempts, tests, type AttemptDoc } from "../db.js";
-import { authRequired, optionalAuth, type AuthedRequest } from "../auth.js";
+import { adminRequired, authRequired, type AuthedRequest } from "../auth.js";
 import {
   scoreTest,
   type AnswerValue,
@@ -9,14 +9,22 @@ import { ObjectId } from "mongodb";
 
 export const attemptsRouter = Router();
 
-attemptsRouter.post("/", optionalAuth, async (req: AuthedRequest, res) => {
+// Standalone attempts are an answer oracle for the ENT pool (submit, read the
+// per-question results, repeat), so only admins may use them for checking.
+attemptsRouter.post("/", adminRequired, async (req: AuthedRequest, res) => {
   const { testId, answers, startedAt } = req.body as {
     testId?: string;
     answers?: Record<string, AnswerValue>;
     startedAt?: string;
   };
 
-  if (!testId || !answers || typeof answers !== "object") {
+  if (
+    typeof testId !== "string" ||
+    !testId ||
+    !answers ||
+    typeof answers !== "object" ||
+    Array.isArray(answers)
+  ) {
     res.status(400).json({ error: "testId и answers обязательны" });
     return;
   }
@@ -29,7 +37,11 @@ attemptsRouter.post("/", optionalAuth, async (req: AuthedRequest, res) => {
 
   const { score, maxScore, results } = scoreTest(row.questions, answers);
   const finishedAt = new Date();
-  const started = startedAt ? new Date(startedAt) : finishedAt;
+  const parsedStart = typeof startedAt === "string" ? new Date(startedAt) : null;
+  const started =
+    parsedStart && !Number.isNaN(parsedStart.getTime()) && parsedStart <= finishedAt
+      ? parsedStart
+      : finishedAt;
 
   const insert = await attempts().insertOne({
     userId: req.user ? new ObjectId(req.user.id) : null,

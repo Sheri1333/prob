@@ -23,6 +23,8 @@ export interface BaseQuestion {
   type: QuestionType;
   text: string;
   images?: string[];
+  /** Reading passage shown above the question (ENT context tasks). */
+  context?: string;
 }
 
 export interface SingleChoiceQuestion extends BaseQuestion {
@@ -142,6 +144,37 @@ function answerFor(
   return answers[String(question.id)] ?? answers[question.id as unknown as string];
 }
 
+/**
+ * ҰБТ rule for 2-point tasks: one mistake still earns 1 point.
+ * Multiple choice — one missing or one extra option; matching — one wrong row.
+ */
+function partialPoints(
+  question: Question,
+  answer: AnswerValue | undefined,
+  weight: number,
+): number {
+  if (weight < 2 || answer === undefined) return 0;
+  if (question.type === "multiple_choice") {
+    if (!Array.isArray(answer) || answer.length === 0) return 0;
+    const picked = new Set(answer);
+    const correct = new Set(question.correctAnswers);
+    let mistakes = 0;
+    for (const id of picked) if (!correct.has(id)) mistakes += 1;
+    for (const id of correct) if (!picked.has(id)) mistakes += 1;
+    return mistakes === 1 ? 1 : 0;
+  }
+  if (question.type === "matching") {
+    if (typeof answer !== "object" || Array.isArray(answer)) return 0;
+    const rowIds = question.rows.map((r) => r.id);
+    if (rowIds.length < 2) return 0;
+    const wrong = rowIds.filter(
+      (id) => answer[id] !== question.correctAnswers[id],
+    ).length;
+    return wrong === 1 ? 1 : 0;
+  }
+  return 0;
+}
+
 export function scaleToOfficial(
   raw: number,
   rawMax: number,
@@ -176,10 +209,12 @@ export function scoreEntSection(
   questions.forEach((q, index) => {
     const weight = questionWeight(block, index);
     rawMax += weight;
-    const correct = isQuestionCorrect(q, answerFor(q, answers));
+    const answer = answerFor(q, answers);
+    const correct = isQuestionCorrect(q, answer);
     results[q.id] = correct;
-    rawPoints[q.id] = correct ? weight : 0;
-    if (correct) raw += weight;
+    const earned = correct ? weight : partialPoints(q, answer, weight);
+    rawPoints[q.id] = earned;
+    raw += earned;
   });
 
   const score = scaleToOfficial(raw, rawMax, officialMax);

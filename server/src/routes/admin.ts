@@ -715,13 +715,16 @@ adminRouter.post("/tests/parse-pdf", upload.single("file"), async (req, res) => 
       return;
     }
 
+    // A short first line before question 1 is the subject ("География").
+    const subject =
+      parsed.title && parsed.title.length <= 40 ? parsed.title : "География";
     const draft = {
       id: newTestId(),
       title: `ҰБТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
       titleKz: `ҰБТ — ${req.file.originalname.replace(/\.pdf$/i, "")}`,
-      section: "География",
+      section: subject,
       examType: "ENT",
-      subject: "География",
+      subject,
       durationMinutes: 50,
       isFree: true,
       priceTenge: null as number | null,

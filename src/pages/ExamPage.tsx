@@ -5,7 +5,8 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { api } from "../api/client";
+import { api, getToken } from "../api/client";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ExamTools } from "../components/ExamTools";
 import { QuestionView } from "../components/QuestionView";
 import { TestFooter } from "../components/TestFooter";
@@ -19,6 +20,7 @@ import {
   clearExamDraft,
   draftFromSession,
   isSubmittedExam,
+  loadExamDraft,
   loadUsedVariants,
   rememberUsedVariants,
   saveExamDraft,
@@ -51,6 +53,10 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [finishing, setFinishing] = useState(false);
+  const [confirmKind, setConfirmKind] = useState<
+    "nextSection" | "finish" | "exit" | null
+  >(null);
+  const [submitError, setSubmitError] = useState("");
   const endsAtRef = useRef(0);
   const finishingRef = useRef(false);
   const draftRef = useRef<ExamDraft | null>(null);
@@ -71,10 +77,25 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
         session.remainingSeconds ??
         Math.max(0, Math.ceil((session.endsAt - Date.now()) / 1000));
       endsAtRef.current = Date.now() + remaining * 1000;
-      const next = draftFromSession({
+      const fromServer = draftFromSession({
         ...session,
         endsAt: endsAtRef.current,
       });
+      // Answers given offline or right before a reload may not have reached
+      // the server yet — the local draft for the same session wins.
+      const local = loadExamDraft();
+      const next =
+        local?.sessionId === fromServer.sessionId
+          ? {
+              ...fromServer,
+              answersByTest: Object.fromEntries(
+                Object.entries(fromServer.answersByTest).map(([testId, answers]) => [
+                  testId,
+                  { ...answers, ...(local.answersByTest[testId] ?? {}) },
+                ]),
+              ),
+            }
+          : fromServer;
       saveExamDraft(next);
       setDraft(next);
       setSecondsLeft(remaining);
@@ -89,6 +110,15 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     setLoadError("");
 
     const boot = async () => {
+      if (!getToken()) {
+        const back = routeSessionId
+          ? `/exam/${routeSessionId}`
+          : combo
+            ? `/exam?combo=${encodeURIComponent(combo)}`
+            : "/exam";
+        navigate("/login", { replace: true, state: { from: back } });
+        return;
+      }
       if (routeSessionId) {
         const session = await api.examSession(routeSessionId);
         if (!cancelled) applySession(session);
@@ -206,7 +236,7 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     } catch (e) {
       finishingRef.current = false;
       setFinishing(false);
-      window.alert(
+      setSubmitError(
         e instanceof Error ? e.message : "Не удалось сохранить результат ЕНТ",
       );
     }
@@ -329,37 +359,42 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
       goTo(currentIndex + 1);
       return;
     }
-    if (!isLastSection) {
-      const ok = window.confirm(
-        lang === "kz"
-          ? "Осы бөлімді аяқтап, келесіге өту керек пе?"
-          : "Завершить этот раздел и перейти к следующему?",
-      );
-      if (!ok) return;
+    setConfirmKind(isLastSection ? "finish" : "nextSection");
+  };
+
+  const handleFinish = () => setConfirmKind("finish");
+
+  const handleExit = () => setConfirmKind("exit");
+
+  const runConfirmed = () => {
+    const kind = confirmKind;
+    setConfirmKind(null);
+    if (kind === "nextSection") {
       patchDraft((prev) => ({
         ...prev,
-        sectionIndex: prev.sectionIndex + 1,
+        sectionIndex: Math.min(prev.sections.length - 1, prev.sectionIndex + 1),
       }));
-      return;
-    }
-    if (window.confirm(t("confirmFinish", lang))) {
+    } else if (kind === "finish") {
       void finishExam();
-    }
-  };
-
-  const handleFinish = () => {
-    if (window.confirm(t("confirmFinish", lang))) {
-      void finishExam();
-    }
-  };
-
-  const handleExit = () => {
-    if (window.confirm(t("confirmExit", lang))) {
+    } else if (kind === "exit") {
       const current = draftRef.current;
       if (current) void persistProgress(current);
       navigate("/");
     }
   };
+
+  const unansweredTotal = sectionSummaries.reduce(
+    (sum, s) => sum + (s.total - s.answered),
+    0,
+  );
+  const finishMessage =
+    unansweredTotal > 0
+      ? lang === "kz"
+        ? `Жауапсыз сұрақтар: ${unansweredTotal}. Аяқтағаннан кейін жауаптарды өзгерту мүмкін емес.`
+        : `Без ответа: ${unansweredTotal}. После завершения изменить ответы нельзя.`
+      : lang === "kz"
+        ? "Барлық сұраққа жауап бердіңіз. Аяқтағаннан кейін жауаптарды өзгерту мүмкін емес."
+        : "Вы ответили на все вопросы. После завершения изменить ответы нельзя.";
 
   const sectionLabel = `${translateSubject(section.subject, lang)} · ${draft.sectionIndex + 1}/${draft.sections.length}`;
 
@@ -381,7 +416,13 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
         onJump={goTo}
       />
 
-      <main className="exam-main">
+      <main
+        className="exam-main exam-main--protected"
+        onCopy={(e) => e.preventDefault()}
+        onCut={(e) => e.preventDefault()}
+        onContextMenu={(e) => e.preventDefault()}
+        onDragStart={(e) => e.preventDefault()}
+      >
         <QuestionView
           question={question}
           lang={lang}
@@ -454,6 +495,58 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmKind && (
+        <ConfirmDialog
+          title={
+            confirmKind === "exit"
+              ? t("exitTest", lang)
+              : confirmKind === "finish"
+                ? t("confirmFinish", lang)
+                : lang === "kz"
+                  ? "Келесі бөлімге өту"
+                  : "Следующий раздел"
+          }
+          message={
+            confirmKind === "exit"
+              ? t("confirmExit", lang)
+              : confirmKind === "finish"
+                ? finishMessage
+                : lang === "kz"
+                  ? "Осы бөлімді аяқтап, келесіге өтесіз бе? Кейін сұрақтар картасы арқылы қайта орала аласыз."
+                  : "Перейти к следующему разделу? Вернуться можно через карту вопросов."
+          }
+          confirmLabel={
+            confirmKind === "exit"
+              ? t("exitTest", lang)
+              : confirmKind === "finish"
+                ? t("finishTest", lang)
+                : t("nextQuestion", lang)
+          }
+          cancelLabel={lang === "kz" ? "Болдырмау" : "Отмена"}
+          danger={confirmKind === "finish"}
+          onCancel={() => setConfirmKind(null)}
+          onConfirm={runConfirmed}
+        />
+      )}
+
+      {submitError && (
+        <ConfirmDialog
+          title={lang === "kz" ? "Нәтиже жіберілмеді" : "Не удалось отправить"}
+          message={`${submitError}. ${
+            lang === "kz"
+              ? "Жауаптар сақталған — интернетті тексеріп, қайталап көріңіз."
+              : "Ответы сохранены — проверьте интернет и попробуйте снова."
+          }`}
+          confirmLabel={lang === "kz" ? "Қайталау" : "Повторить"}
+          cancelLabel={lang === "kz" ? "Жабу" : "Закрыть"}
+          onCancel={() => setSubmitError("")}
+          onConfirm={() => {
+            setSubmitError("");
+            void finishExam();
+          }}
+        />
       )}
 
       {zoomSrc && (

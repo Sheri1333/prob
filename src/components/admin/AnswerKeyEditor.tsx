@@ -97,6 +97,23 @@ export function AnswerKeyEditor({
                     }
                   />
                 </label>
+                <label className="admin-q__field">
+                  Текст-контекст (необязательно, показывается над вопросом)
+                  <textarea
+                    rows={q.context ? 4 : 2}
+                    value={q.context ?? ""}
+                    placeholder="Первая строка — заголовок, дальше — текст"
+                    onChange={(e) => {
+                      const { context: _old, ...rest } = q;
+                      updateAt(
+                        index,
+                        e.target.value.trim()
+                          ? { ...q, context: e.target.value }
+                          : (rest as Question),
+                      );
+                    }}
+                  />
+                </label>
 
                 {q.images && q.images.length > 0 && (
                   <div className="admin-q__photos">

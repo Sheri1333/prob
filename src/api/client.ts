@@ -71,9 +71,18 @@ async function request<T>(
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
 
   if (!res.ok) {
-    throw new Error(data.error || `Ошибка ${res.status}`);
+    throw new ApiError(data.error || `Ошибка ${res.status}`, res.status);
   }
   return data;
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
 }
 
 export interface EntPricing {

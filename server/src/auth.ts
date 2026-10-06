@@ -3,6 +3,11 @@ import jwt from "jsonwebtoken";
 import { publicUser, toObjectId, users, type UserRole } from "./db.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "prob-dev-secret-change-me";
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === "production") {
+  console.error(
+    "WARNING: JWT_SECRET is not set — tokens are signed with a public default. Set it in server/.env",
+  );
+}
 
 export interface AuthUser {
   id: string;

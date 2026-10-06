@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   api,
+  ApiError,
   clearSession,
   getStoredUser,
   getToken,
@@ -44,9 +45,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(u);
         setSession(token, u);
       })
-      .catch(() => {
-        clearSession();
-        setUser(null);
+      .catch((err) => {
+        // Keep the stored session on network errors / API restarts; only an
+        // explicit 401 means the token is no longer valid.
+        if (err instanceof ApiError && err.status === 401) {
+          clearSession();
+          setUser(null);
+        }
       })
       .finally(() => setLoading(false));
   }, []);

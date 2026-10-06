@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { tests } from "../db.js";
 import { stripAnswers } from "../scoring.js";
+import { adminRequired } from "../auth.js";
 
 export const testsRouter = Router();
 
@@ -35,11 +36,16 @@ function toCatalogItem(row: {
 }
 
 testsRouter.get("/", async (_req, res) => {
-  const rows = await tests().find().sort({ createdAt: -1 }).toArray();
+  const rows = await tests()
+    .find({}, { projection: { questions: 0 } })
+    .sort({ createdAt: -1 })
+    .toArray();
   res.json({ tests: rows.map(toCatalogItem) });
 });
 
-testsRouter.get("/:id", async (req, res) => {
+// Questions of pool variants must not be readable before an exam starts
+// (no timer, time to look answers up), so the preview is admin-only.
+testsRouter.get("/:id", adminRequired, async (req, res) => {
   const row = await tests().findOne({ _id: req.params.id });
   if (!row) {
     res.status(404).json({ error: "Тест не найден" });

@@ -16,6 +16,8 @@ export interface BaseQuestion {
   type: QuestionType;
   text: string;
   images?: string[];
+  /** Reading passage shown above the question (ENT context tasks). */
+  context?: string;
 }
 
 export interface SingleChoiceQuestion extends BaseQuestion {

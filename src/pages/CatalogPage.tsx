@@ -15,6 +15,7 @@ import { loadExamDraft } from "../utils/examDraft";
 
 interface CatalogPageProps {
   lang: Lang;
+  onToggleLang: () => void;
 }
 
 function setupScrollReveal(root: HTMLElement): () => void {
@@ -95,7 +96,7 @@ function setupScrollReveal(root: HTMLElement): () => void {
   };
 }
 
-export function CatalogPage({ lang }: CatalogPageProps) {
+export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const pageRef = useRef<HTMLDivElement>(null);
@@ -200,6 +201,12 @@ export function CatalogPage({ lang }: CatalogPageProps) {
   const resume = activeSessionId;
 
   const sessionMinutes = blueprint?.durationMinutes ?? 240;
+  const comboCount = blueprint?.combinations.length ?? 17;
+  const bundleSavings = Math.max(
+    0,
+    pricing.singlePriceTenge * 3 - pricing.bundlePriceTenge,
+  );
+  const formatTenge = (n: number) => `${n.toLocaleString("ru-RU")} ₸`;
 
   return (
     <div className="page" ref={pageRef}>
@@ -209,11 +216,19 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           <ThemeToggle />
         </div>
         <nav className="site-header__nav">
+          <button
+            type="button"
+            className="header-btn header-btn--ghost header-btn--lang"
+            onClick={onToggleLang}
+            aria-label={lang === "kz" ? "Тілді ауыстыру" : "Сменить язык"}
+          >
+            {lang === "kz" ? "РУС" : "ҚАЗ"}
+          </button>
           {user ? (
             <>
               {isAdmin && (
                 <Link to="/admin" className="header-btn header-btn--ghost">
-                  Админка
+                  {lang === "kz" ? "Әкімші" : "Админка"}
                 </Link>
               )}
               <Link to="/profile" className="site-header__user">
@@ -224,16 +239,16 @@ export function CatalogPage({ lang }: CatalogPageProps) {
                 className="link-btn"
                 onClick={() => setConfirmLogout(true)}
               >
-                Выйти
+                {lang === "kz" ? "Шығу" : "Выйти"}
               </button>
             </>
           ) : (
             <>
               <Link to="/login" className="header-btn header-btn--ghost">
-                Кіру
+                {lang === "kz" ? "Кіру" : "Войти"}
               </Link>
               <Link to="/register" className="header-btn header-btn--primary">
-                Тіркелу
+                {lang === "kz" ? "Тіркелу" : "Регистрация"}
               </Link>
             </>
           )}
@@ -253,7 +268,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
           </h1>
           <p>
             {lang === "kz"
-              ? "Талапкер — ҰБТ-ға дайындық сервисі. Дайындал бізбен бірге."
+              ? "Талапкер — ҰБТ-ға дайындық сервисі. Бізбен бірге дайындал."
               : "Талапкер — сервис подготовки к ЕНТ. Готовься вместе с нами."}
           </p>
         </div>
@@ -261,7 +276,9 @@ export function CatalogPage({ lang }: CatalogPageProps) {
 
       {error && (
         <p className="auth-card__error catalog-error">
-          {error}. Запустите API: <code>npm run server</code>
+          {lang === "kz"
+            ? "Сервер уақытша қолжетімсіз. Бірнеше минуттан кейін бетті жаңартыңыз."
+            : "Сервер временно недоступен. Обновите страницу через пару минут."}
         </p>
       )}
 
@@ -327,12 +344,14 @@ export function CatalogPage({ lang }: CatalogPageProps) {
         )}
 
       <section className="pricing">
-        <h2 className="landing-section-title reveal reveal--title">Прайсинг</h2>
+        <h2 className="landing-section-title reveal reveal--title">
+          {lang === "kz" ? "Тарифтер" : "Тарифы"}
+        </h2>
         <div className="pricing__grid">
           {pricing.trialEnabled && (
             <div className="pricing-card reveal">
               <h3 className="pricing-card__name">
-                {lang === "kz" ? "1 пробный" : "1 пробный"}
+                {lang === "kz" ? "Тегін сынақ" : "Бесплатный пробник"}
               </h3>
               <div className="pricing-card__price">0 ₸</div>
               <ul className="pricing-card__list">
@@ -368,7 +387,7 @@ export function CatalogPage({ lang }: CatalogPageProps) {
               {lang === "kz" ? "Толық ҰБТ" : "Полный ЕНТ"}
             </h3>
             <div className="pricing-card__price">
-              {pricing.singlePriceTenge} ₸
+              {formatTenge(pricing.singlePriceTenge)}
             </div>
             <ul className="pricing-card__list">
               <li className="ok">
@@ -393,19 +412,25 @@ export function CatalogPage({ lang }: CatalogPageProps) {
 
           <div className="pricing-card pricing-card--featured reveal">
             <span className="pricing-card__ribbon">
-              {lang === "kz" ? "Тиімді" : "Тиімді"}
+              {lang === "kz" ? "Тиімді" : "Выгодно"}
             </span>
             <div className="pricing-card__inner">
-              <h3 className="pricing-card__name">2+1</h3>
+              <h3 className="pricing-card__name">
+                {lang === "kz" ? "3 толық ҰБТ" : "3 полных ЕНТ"}
+              </h3>
               <div className="pricing-card__price">
-                {pricing.bundlePriceTenge} ₸
+                {formatTenge(pricing.bundlePriceTenge)}
               </div>
               <ul className="pricing-card__list">
                 <li className="ok">
                   <span className="material-symbols-outlined">check_circle</span>
-                  {lang === "kz"
-                    ? "3 толық ҰБТ — екеуінің бағасына"
-                    : "3 полных ЕНТ по цене двух"}
+                  {bundleSavings > 0
+                    ? lang === "kz"
+                      ? `Жеке алғаннан ${formatTenge(bundleSavings)} арзан`
+                      : `Дешевле на ${formatTenge(bundleSavings)}, чем по одному`
+                    : lang === "kz"
+                      ? "Үш толық сессия"
+                      : "Три полные сессии"}
                 </li>
                 <li className="ok">
                   <span className="material-symbols-outlined">check_circle</span>
@@ -429,31 +454,33 @@ export function CatalogPage({ lang }: CatalogPageProps) {
       <section className="landing-stats">
         <div className="landing-stat reveal">
           <strong>
-            <AnimatedNumber value={10000} suffix="+" />
+            <AnimatedNumber value={5} />
           </strong>
-          <span>{lang === "kz" ? "оқушы" : "учеников"}</span>
+          <span>{lang === "kz" ? "пән бір сессияда" : "предметов за сессию"}</span>
         </div>
         <div className="landing-stat reveal">
           <strong>
-            <AnimatedNumber value={500} suffix="+" />
+            <AnimatedNumber value={sessionMinutes} />
           </strong>
-          <span>{lang === "kz" ? "тест" : "тестов"}</span>
+          <span>{lang === "kz" ? "минут, нақты ҰБТ-дай" : "минут, как на ЕНТ"}</span>
         </div>
         <div className="landing-stat reveal">
           <strong>
-            <AnimatedNumber value={20000} suffix="+" />
+            <AnimatedNumber value={140} />
           </strong>
-          <span>{lang === "kz" ? "сұрақ" : "вопросов"}</span>
+          <span>{lang === "kz" ? "максимал балл" : "максимальный балл"}</span>
         </div>
         <div className="landing-stat reveal">
-          <strong>24/7</strong>
-          <span>{lang === "kz" ? "қолжетімділік" : "доступности"}</span>
+          <strong>
+            <AnimatedNumber value={comboCount} />
+          </strong>
+          <span>{lang === "kz" ? "бейіндік комбинация" : "профильных комбинаций"}</span>
         </div>
       </section>
 
       <section className="landing-features">
         <h2 className="landing-section-title reveal reveal--title">
-          {lang === "kz" ? "Неге Талапкер?" : "Почему Талапкер"}
+          {lang === "kz" ? "Неге Талапкер?" : "Почему Талапкер?"}
         </h2>
         <div className="landing-features__grid">
           <article className="landing-feature reveal">

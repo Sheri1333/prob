@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { ThemeProvider } from "./theme/ThemeContext";
@@ -19,8 +19,25 @@ import { ResultsPage } from "./pages/ResultsPage";
 import { TestPage } from "./pages/TestPage";
 import "./styles/global.css";
 
+const LANG_KEY = "prob_lang";
+
 export function App() {
-  const [lang, setLang] = useState<Lang>("kz");
+  const [lang, setLang] = useState<Lang>(() => {
+    try {
+      return localStorage.getItem(LANG_KEY) === "ru" ? "ru" : "kz";
+    } catch {
+      return "kz";
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.lang = lang === "kz" ? "kk" : "ru";
+    try {
+      localStorage.setItem(LANG_KEY, lang);
+    } catch {
+      /* private mode */
+    }
+  }, [lang]);
 
   const toggleLang = () => setLang((l) => (l === "kz" ? "ru" : "kz"));
 
@@ -29,7 +46,10 @@ export function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<CatalogPage lang={lang} />} />
+            <Route
+              path="/"
+              element={<CatalogPage lang={lang} onToggleLang={toggleLang} />}
+            />
             <Route path="/faq" element={<LegalPage lang={lang} kind="faq" />} />
             <Route path="/terms" element={<LegalPage lang={lang} kind="terms" />} />
             <Route

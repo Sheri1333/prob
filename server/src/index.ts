@@ -39,6 +39,8 @@ const corsMw = cors({
 
 const app = express();
 app.disable("x-powered-by");
+// Nginx on the same host proxies /api; trust it so req.ip is the client IP.
+app.set("trust proxy", "loopback");
 app.use(corsMw);
 app.options(/.*/, corsMw);
 app.use(express.json({ limit: "40mb" }));
@@ -74,13 +76,26 @@ app.use("/api/admin", adminRouter);
 
 app.use(
   (
-    err: Error,
+    err: Error & { status?: number; statusCode?: number; type?: string },
     _req: express.Request,
     res: express.Response,
     _next: express.NextFunction,
   ) => {
+    const status = err.status ?? err.statusCode ?? 500;
+    if (status >= 400 && status < 500) {
+      // Body-parser errors: malformed JSON, payload too large, etc.
+      res.status(status).json({
+        error:
+          err.type === "entity.parse.failed"
+            ? "Некорректный JSON в запросе"
+            : err.type === "entity.too.large"
+              ? "Слишком большой запрос"
+              : err.message || "Некорректный запрос",
+      });
+      return;
+    }
     console.error(err);
-    res.status(500).json({ error: err.message || "Internal error" });
+    res.status(500).json({ error: "Внутренняя ошибка сервера. Попробуйте ещё раз" });
   },
 );
 

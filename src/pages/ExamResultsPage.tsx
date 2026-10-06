@@ -195,7 +195,9 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
                         className={
                           section.results[n]
                             ? "ent-grid-table__ok"
-                            : "ent-grid-table__bad"
+                            : (section.points?.[n] ?? 0) > 0
+                              ? "ent-grid-table__part"
+                              : "ent-grid-table__bad"
                         }
                       >
                         {section.points?.[n] ?? (section.results[n] ? 1 : 0)}

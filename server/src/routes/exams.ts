@@ -11,6 +11,12 @@ import {
   type TestDoc,
 } from "../db.js";
 import { authRequired, optionalAuth, type AuthedRequest } from "../auth.js";
+import { rateLimit } from "../rateLimit.js";
+import {
+  shuffleQuestionsForSession,
+  toOriginalAnswers,
+  toSessionAnswers,
+} from "../shuffle.js";
 import { newTestId } from "../ids.js";
 import {
   buildEntPoolCoverage,
@@ -30,6 +36,12 @@ import { queueMail, sendExamResultEmail } from "../mail.js";
 
 export const examsRouter = Router();
 const SUBMIT_GRACE_MS = 5_000;
+const startLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: "Слишком много запусков ЕНТ. Попробуйте позже",
+  key: (req) => (req as AuthedRequest).user?.id ?? req.ip ?? "unknown",
+});
 
 examsRouter.get("/pricing", async (_req, res) => {
   res.json(await getPricing());
@@ -116,7 +128,7 @@ function publicInProgress(session: ExamSessionDoc, now = new Date()) {
     sectionIndex: session.sectionIndex,
     answersByTest: session.answersByTest,
     currentIndexByTest: session.currentIndexByTest,
-    sections: session.sections,
+    sections: session.sections.map(({ optionMaps: _secret, ...rest }) => rest),
     usedTestIds: session.usedTestIds,
   };
 }
@@ -130,6 +142,9 @@ async function sessionPayload(sessionId: string, rows: AttemptDoc[]) {
   const stored = await examSessions().findOne({ _id: sessionId });
   const blockByTest = new Map(
     (stored?.sections ?? []).map((s) => [s.testId, s.block]),
+  );
+  const mapsByTest = new Map(
+    (stored?.sections ?? []).map((s) => [s.testId, s.optionMaps]),
   );
 
   const sections = [...rows]
@@ -152,7 +167,13 @@ async function sessionPayload(sessionId: string, rows: AttemptDoc[]) {
         maxScore: row.maxScore,
         results: scored.results,
         points: scored.points,
-        answerLabels: answerLabelsFrom(test.questions, row.answers ?? {}),
+        answerLabels: answerLabelsFrom(
+          test.questions,
+          toSessionAnswers(
+            asAnswers(row.answers as Record<string, unknown>),
+            mapsByTest.get(row.testId),
+          ),
+        ),
         questionIds: test.questions.map((q) => q.id),
         questionCount: test.questions.length,
       };
@@ -179,70 +200,85 @@ async function sessionPayload(sessionId: string, rows: AttemptDoc[]) {
   };
 }
 
+/** Keep only answers for tests that belong to this session. */
+function sectionAnswersOnly(
+  session: ExamSessionDoc,
+  extra?: Record<string, Record<string, AnswerValue>>,
+): Record<string, Record<string, AnswerValue>> | undefined {
+  if (!extra || typeof extra !== "object") return undefined;
+  const out: Record<string, Record<string, AnswerValue>> = {};
+  for (const section of session.sections) {
+    const answers = extra[section.testId];
+    if (answers && typeof answers === "object" && !Array.isArray(answers)) {
+      out[section.testId] = answers;
+    }
+  }
+  return out;
+}
+
+function sanitizeIndexes(
+  session: ExamSessionDoc,
+  extra: unknown,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!extra || typeof extra !== "object") return out;
+  const raw = extra as Record<string, unknown>;
+  for (const section of session.sections) {
+    const value = raw[section.testId];
+    if (typeof value === "number" && Number.isInteger(value)) {
+      out[section.testId] = Math.max(
+        0,
+        Math.min(section.questions.length - 1, value),
+      );
+    }
+  }
+  return out;
+}
+
+/**
+ * Another request already claimed this session. Its attempts may still be
+ * inserting, so wait briefly until all sections are visible.
+ */
+async function waitForSubmittedPayload(session: ExamSessionDoc) {
+  const expected = session.sections.length;
+  let rows: AttemptDoc[] = [];
+  for (let i = 0; i < 20; i++) {
+    rows = await attempts().find({ sessionId: session._id }).toArray();
+    if (rows.length >= expected) break;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  return sessionPayload(session._id, rows);
+}
+
 async function finalizeSession(
   session: ExamSessionDoc,
   extraAnswers?: Record<string, Record<string, AnswerValue>>,
   allowMerge = true,
 ) {
+  if (session.status === "submitted") {
+    return waitForSubmittedPayload(session);
+  }
   const existing = await attempts()
     .find({ sessionId: session._id })
     .toArray();
-  if (existing.length > 0 || session.status === "submitted") {
-    if (session.status !== "submitted") {
-      await examSessions().updateOne(
-        { _id: session._id },
-        { $set: { status: "submitted", submittedAt: new Date() } },
-      );
-    }
+  if (existing.length > 0) {
+    await examSessions().updateOne(
+      { _id: session._id },
+      { $set: { status: "submitted", submittedAt: new Date() } },
+    );
     return sessionPayload(session._id, existing);
   }
 
   const now = new Date();
   const answersByTest = allowMerge
-    ? mergeAnswers(session.answersByTest, extraAnswers)
+    ? mergeAnswers(session.answersByTest, sectionAnswersOnly(session, extraAnswers))
     : session.answersByTest;
   const finishedAt = now;
-  const results = [];
-  let totalScore = 0;
-  let totalMax = 0;
 
-  for (const section of session.sections) {
-    const row = await tests().findOne({ _id: section.testId });
-    const questions = row?.questions ?? section.questions;
-    const answers = asAnswers(answersByTest[section.testId]);
-    const scored = scoreEntSection(section.block, questions, answers);
-    totalScore += scored.score;
-    totalMax += scored.maxScore;
-
-    const insert = await attempts().insertOne({
-      userId: session.userId,
-      testId: section.testId,
-      answers,
-      score: scored.score,
-      maxScore: scored.maxScore,
-      startedAt: session.startedAt,
-      finishedAt,
-      sessionId: session._id,
-    } as AttemptDoc);
-
-    results.push({
-      attemptId: insert.insertedId.toHexString(),
-      testId: section.testId,
-      subject: section.subject,
-      title: row?.title ?? section.title,
-      titleKz: row?.titleKz ?? section.titleKz,
-      score: scored.score,
-      maxScore: scored.maxScore,
-      results: scored.results,
-      points: scored.points,
-      answerLabels: answerLabelsFrom(questions, answers),
-      questionIds: questions.map((q) => q.id),
-      questionCount: questions.length,
-    });
-  }
-
-  await examSessions().updateOne(
-    { _id: session._id },
+  // Claim the session atomically so concurrent submits (double click, timer +
+  // button, expiry on GET) cannot insert the section attempts twice.
+  const claim = await examSessions().updateOne(
+    { _id: session._id, status: { $ne: "submitted" } },
     {
       $set: {
         status: "submitted",
@@ -251,6 +287,60 @@ async function finalizeSession(
       },
     },
   );
+  if (claim.modifiedCount === 0) {
+    return waitForSubmittedPayload(session);
+  }
+
+  const testDocs = await tests()
+    .find({ _id: { $in: session.sections.map((s) => s.testId) } })
+    .toArray();
+  const testById = new Map(testDocs.map((t) => [t._id, t]));
+  const results = [];
+  const rows: AttemptDoc[] = [];
+  let totalScore = 0;
+  let totalMax = 0;
+
+  for (const section of session.sections) {
+    const row = testById.get(section.testId);
+    const questions = row?.questions ?? section.questions;
+    // Answers arrive in this session's shuffled letters; score and store
+    // them against the original option ids.
+    const shownAnswers = asAnswers(answersByTest[section.testId]);
+    const answers = toOriginalAnswers(shownAnswers, section.optionMaps);
+    const scored = scoreEntSection(section.block, questions, answers);
+    totalScore += scored.score;
+    totalMax += scored.maxScore;
+
+    const attemptId = new ObjectId();
+    rows.push({
+      _id: attemptId,
+      userId: session.userId,
+      testId: section.testId,
+      answers,
+      score: scored.score,
+      maxScore: scored.maxScore,
+      startedAt: session.startedAt,
+      finishedAt,
+      sessionId: session._id,
+    });
+
+    results.push({
+      attemptId: attemptId.toHexString(),
+      testId: section.testId,
+      subject: section.subject,
+      title: row?.title ?? section.title,
+      titleKz: row?.titleKz ?? section.titleKz,
+      score: scored.score,
+      maxScore: scored.maxScore,
+      results: scored.results,
+      points: scored.points,
+      answerLabels: answerLabelsFrom(questions, shownAnswers),
+      questionIds: questions.map((q) => q.id),
+      questionCount: questions.length,
+    });
+  }
+
+  if (rows.length > 0) await attempts().insertMany(rows);
 
   if (session.userId && isBrevoConfigured()) {
     const user = await users().findOne({ _id: session.userId });
@@ -419,19 +509,24 @@ examsRouter.patch("/sessions/:sessionId", optionalAuth, async (req: AuthedReques
   const now = new Date();
   const allowMerge = now.getTime() <= loaded.session.endsAt.getTime() + SUBMIT_GRACE_MS;
   const answersByTest = allowMerge
-    ? mergeAnswers(loaded.session.answersByTest, body.answersByTest)
+    ? mergeAnswers(
+        loaded.session.answersByTest,
+        sectionAnswersOnly(loaded.session, body.answersByTest),
+      )
     : loaded.session.answersByTest;
   const sectionIndex =
-    typeof body.sectionIndex === "number"
+    typeof body.sectionIndex === "number" && Number.isInteger(body.sectionIndex)
       ? Math.max(0, Math.min(loaded.session.sections.length - 1, body.sectionIndex))
       : loaded.session.sectionIndex;
   const currentIndexByTest = {
     ...loaded.session.currentIndexByTest,
-    ...(body.currentIndexByTest ?? {}),
+    ...sanitizeIndexes(loaded.session, body.currentIndexByTest),
   };
 
+  // Only touch sessions that are still running: a concurrent submit must not
+  // be overwritten with stale answers.
   await examSessions().updateOne(
-    { _id: loaded.session._id },
+    { _id: loaded.session._id, status: "in_progress" },
     { $set: { answersByTest, sectionIndex, currentIndexByTest } },
   );
 
@@ -471,7 +566,7 @@ examsRouter.get("/blueprint", optionalAuth, async (_req: AuthedRequest, res) => 
   });
 });
 
-examsRouter.post("/start", optionalAuth, async (req: AuthedRequest, res) => {
+examsRouter.post("/start", authRequired, startLimiter, async (req: AuthedRequest, res) => {
   const body = req.body as {
     comboId?: string;
     profileSubjects?: string[];
@@ -495,7 +590,9 @@ examsRouter.post("/start", optionalAuth, async (req: AuthedRequest, res) => {
   }
 
   const used = new Set<string>(
-    (body.excludeTestIds ?? []).filter((id) => typeof id === "string"),
+    (Array.isArray(body.excludeTestIds) ? body.excludeTestIds : []).filter(
+      (id): id is string => typeof id === "string",
+    ),
   );
 
   if (req.user) {
@@ -570,9 +667,11 @@ examsRouter.post("/start", optionalAuth, async (req: AuthedRequest, res) => {
   const now = new Date();
   const storedSections: ExamSessionSection[] = sections.map((s) => {
     const doc = byId.get(s.testId)!;
+    const shuffled = shuffleQuestionsForSession(stripAnswers(doc.questions));
     return {
       ...s,
-      questions: stripAnswers(doc.questions),
+      questions: shuffled.questions,
+      optionMaps: shuffled.optionMaps,
     };
   });
 
@@ -608,13 +707,14 @@ examsRouter.post("/submit", optionalAuth, async (req: AuthedRequest, res) => {
     }>;
   };
 
-  if (!body.sessionId) {
+  if (typeof body.sessionId !== "string" || !body.sessionId) {
     res.status(400).json({ error: "sessionId обязателен" });
     return;
   }
 
   const extraAnswers: Record<string, Record<string, AnswerValue>> = {};
-  for (const section of body.sections ?? []) {
+  for (const section of Array.isArray(body.sections) ? body.sections : []) {
+    if (!section || typeof section.testId !== "string") continue;
     extraAnswers[section.testId] = section.answers ?? {};
   }
 

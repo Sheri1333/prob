@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Question } from "./scoring.js";
+import type { OptionMaps } from "./shuffle.js";
 import { isUuid, newTestId } from "./ids.js";
 import "./tlsSetup.js";
 
@@ -97,6 +98,8 @@ export interface ExamSessionSection {
   titleKz: string;
   questionCount: number;
   questions: Question[];
+  /** Server-only: per-session option shuffle. Never sent to the client. */
+  optionMaps?: OptionMaps;
 }
 
 export interface ExamSessionDoc {

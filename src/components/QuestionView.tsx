@@ -16,6 +16,22 @@ interface QuestionViewProps {
   onZoom?: (src: string) => void;
 }
 
+function QuestionContext({ text, lang }: { text: string; lang: Lang }) {
+  const [first, ...rest] = text.split("\n");
+  const heading = rest.length > 0 ? first : null;
+  const body = rest.length > 0 ? rest.join("\n") : first;
+  return (
+    <section className="exam-context" aria-label={lang === "kz" ? "Мәтін" : "Текст"}>
+      <span className="exam-context__badge">
+        <span className="material-symbols-outlined">menu_book</span>
+        {lang === "kz" ? "Мәтінді оқыңыз" : "Прочитайте текст"}
+      </span>
+      {heading && <h3 className="exam-context__title">{heading}</h3>}
+      <p className="exam-context__body">{body}</p>
+    </section>
+  );
+}
+
 export function QuestionView({
   question,
   lang,
@@ -25,6 +41,7 @@ export function QuestionView({
 }: QuestionViewProps) {
   return (
     <article className="exam-card">
+      {question.context && <QuestionContext text={question.context} lang={lang} />}
       <h2 className="exam-card__title">{question.text}</h2>
 
       {question.images && question.images.length > 0 && (

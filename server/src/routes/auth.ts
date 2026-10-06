@@ -11,8 +11,23 @@ import {
   sendWelcomeEmail,
   syncUserToBrevo,
 } from "../mail.js";
+import { rateLimit } from "../rateLimit.js";
 
 export const authRouter = Router();
+
+const TOO_MANY = "Слишком много попыток. Попробуйте через несколько минут";
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: TOO_MANY });
+const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: TOO_MANY });
+const mailLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: TOO_MANY });
+const EMAIL_RE = /^[^s@]+@[^s@]+.[^s@]+$/;
+
+function str(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function isDuplicateKey(err: unknown): boolean {
+  return Boolean(err && typeof err === "object" && (err as { code?: number }).code === 11000);
+}
 
 const VERIFY_MS = 48 * 60 * 60 * 1000;
 const RESET_MS = 60 * 60 * 1000;
@@ -31,14 +46,12 @@ function respondUser(res: { status: (code: number) => { json: (body: unknown) =>
   else res.json(payload);
 }
 
-authRouter.post("/register", async (req, res) => {
-  const { email, password, name } = req.body as {
-    email?: string;
-    password?: string;
-    name?: string;
-  };
+authRouter.post("/register", registerLimiter, async (req, res) => {
+  const email = str(req.body?.email);
+  const password = str(req.body?.password);
+  const name = str(req.body?.name).slice(0, 80);
 
-  if (!email?.trim() || !password || !name?.trim()) {
+  if (!email.trim() || !password || !name.trim()) {
     res.status(400).json({ error: "email, password и name обязательны" });
     return;
   }
@@ -46,8 +59,16 @@ authRouter.post("/register", async (req, res) => {
     res.status(400).json({ error: "Пароль минимум 6 символов" });
     return;
   }
+  if (password.length > 128) {
+    res.status(400).json({ error: "Пароль слишком длинный" });
+    return;
+  }
 
   const normalized = email.trim().toLowerCase();
+  if (!EMAIL_RE.test(normalized) || normalized.length > 254) {
+    res.status(400).json({ error: "Некорректный email" });
+    return;
+  }
   const existing = await users().findOne({ email: normalized });
   if (existing) {
     res.status(409).json({ error: "Email уже зарегистрирован" });
@@ -56,9 +77,12 @@ authRouter.post("/register", async (req, res) => {
 
   const now = new Date();
   const verifyToken = newToken();
-  const result = await users().insertOne({
+  const passwordHash = await bcrypt.hash(password, 10);
+  let result;
+  try {
+    result = await users().insertOne({
     email: normalized,
-    passwordHash: bcrypt.hashSync(password, 10),
+    passwordHash,
     name: name.trim(),
     role: "user",
     createdAt: now,
@@ -66,6 +90,13 @@ authRouter.post("/register", async (req, res) => {
     verifyTokenHash: hashToken(verifyToken),
     verifyExpiresAt: new Date(now.getTime() + VERIFY_MS),
   } as UserDoc);
+  } catch (err) {
+    if (isDuplicateKey(err)) {
+      res.status(409).json({ error: "Email уже зарегистрирован" });
+      return;
+    }
+    throw err;
+  }
 
   const user = publicUser({
     _id: result.insertedId,
@@ -91,15 +122,16 @@ authRouter.post("/register", async (req, res) => {
   respondUser(res, user, 201);
 });
 
-authRouter.post("/login", async (req, res) => {
-  const { email, password } = req.body as { email?: string; password?: string };
+authRouter.post("/login", loginLimiter, async (req, res) => {
+  const email = str(req.body?.email);
+  const password = str(req.body?.password);
   if (!email || !password) {
     res.status(400).json({ error: "email и password обязательны" });
     return;
   }
 
   const row = await users().findOne({ email: email.trim().toLowerCase() });
-  if (!row || !bcrypt.compareSync(password, row.passwordHash)) {
+  if (!row || !(await bcrypt.compare(password, row.passwordHash))) {
     res.status(401).json({ error: "Неверный email или пароль" });
     return;
   }
@@ -141,7 +173,7 @@ authRouter.post("/verify-email", optionalAuth, async (req: AuthedRequest, res) =
   res.json({ ok: true, token: signToken(user), user });
 });
 
-authRouter.post("/resend-verify", authRequired, async (req: AuthedRequest, res) => {
+authRouter.post("/resend-verify", mailLimiter, authRequired, async (req: AuthedRequest, res) => {
   const row = await users().findOne({ email: req.user!.email });
   if (!row) {
     res.status(404).json({ error: "Пользователь не найден" });
@@ -175,7 +207,7 @@ authRouter.post("/resend-verify", authRequired, async (req: AuthedRequest, res) 
   res.json({ ok: true });
 });
 
-authRouter.post("/forgot-password", async (req, res) => {
+authRouter.post("/forgot-password", mailLimiter, async (req, res) => {
   const email =
     typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   if (!email) {
@@ -208,15 +240,15 @@ authRouter.post("/forgot-password", async (req, res) => {
   });
 });
 
-authRouter.post("/reset-password", async (req, res) => {
+authRouter.post("/reset-password", loginLimiter, async (req, res) => {
   const token = typeof req.body?.token === "string" ? req.body.token : "";
   const password = typeof req.body?.password === "string" ? req.body.password : "";
   if (!token || !password) {
     res.status(400).json({ error: "token и password обязательны" });
     return;
   }
-  if (password.length < 6) {
-    res.status(400).json({ error: "Пароль минимум 6 символов" });
+  if (password.length < 6 || password.length > 128) {
+    res.status(400).json({ error: "Пароль: от 6 до 128 символов" });
     return;
   }
   const row = await users().findOne({
@@ -230,7 +262,7 @@ authRouter.post("/reset-password", async (req, res) => {
   await users().updateOne(
     { _id: row._id },
     {
-      $set: { passwordHash: bcrypt.hashSync(password, 10) },
+      $set: { passwordHash: await bcrypt.hash(password, 10) },
       $unset: { resetTokenHash: "", resetExpiresAt: "" },
     },
   );

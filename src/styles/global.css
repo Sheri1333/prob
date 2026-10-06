@@ -75,6 +75,7 @@ html[data-theme="dark"] {
   --success-bg: rgba(27, 138, 62, 0.18);
   --error-bg: rgba(211, 53, 47, 0.16);
   --warning-bg: rgba(168, 91, 0, 0.2);
+  --warning-text: #f0a54a;
   --exam-surface: #11131e;
   --exam-on-surface: #eef0fa;
   --exam-on-variant: #a6acc4;
@@ -1769,7 +1770,8 @@ span.landing-feature__icon {
   position: fixed;
   inset: 0;
   z-index: 90;
-  background: rgba(10, 11, 20, 0.55);
+  background: rgba(5, 6, 12, 0.68);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3831,6 +3833,20 @@ label.admin-btn--primary:hover {
   font-weight: 700;
 }
 
+.ent-grid-table__part {
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  font-weight: 700;
+}
+
+.header-btn--lang {
+  background: transparent;
+  cursor: pointer;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding-inline: 0.85rem;
+}
+
 .exam-map__section {
   display: inline-block;
   margin: 0 0.35rem 0.35rem 0;
@@ -4643,3 +4659,49 @@ label.admin-btn--primary:hover {
   }
 }
 
+
+/* Discourage copying exam questions into search / AI tools. */
+.exam-main--protected {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Reading passage for ENT context tasks */
+.exam-context {
+  margin: 0 0 1.5rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-soft);
+  border-left: 4px solid var(--blue);
+  background: var(--blue-light);
+  color: var(--text);
+}
+
+.exam-context__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+
+.exam-context__badge .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.exam-context__title {
+  margin: 0.6rem 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.exam-context__body {
+  margin: 0.5rem 0 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  white-space: pre-line;
+}
