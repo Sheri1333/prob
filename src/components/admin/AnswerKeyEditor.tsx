@@ -319,12 +319,18 @@ function MatchingKey({
   onUploadImage?: (file: File) => Promise<string>;
 }) {
   const pairs = question.correctAnswers ?? {};
-  const used = new Set(Object.values(pairs));
+  const pickedFor = (rowId: string) =>
+    (pairs[rowId] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
-  const setPair = (rowId: string, optionId: string) => {
+  // A row may have several correct options ("A — 3, 4").
+  const togglePair = (rowId: string, optionId: string) => {
+    const current = pickedFor(rowId);
+    const ids = current.includes(optionId)
+      ? current.filter((id) => id !== optionId)
+      : [...current, optionId].sort();
     const next = { ...pairs };
-    if (!optionId) delete next[rowId];
-    else next[rowId] = optionId;
+    if (ids.length === 0) delete next[rowId];
+    else next[rowId] = ids.join(",");
     onChange({ ...question, correctAnswers: next });
   };
 
@@ -385,8 +391,8 @@ function MatchingKey({
     <div className="admin-match">
       <p className="admin-hint">
         Слева — пункты 1, 2… К каждому пункту можно прикрепить фото. Справа —
-        варианты A, B, C, D. Для каждой строки выберите букву. Одна буква —
-        только к одной строке.
+        варианты A, B, C, D. Для каждой строки отметьте одну или несколько
+        букв.
       </p>
       <div className="admin-match__grid">
         <div className="admin-match__col">
@@ -431,21 +437,22 @@ function MatchingKey({
                   </label>
                 )}
               </div>
-              <select
-                value={pairs[row.id] ?? ""}
-                onChange={(e) => setPair(row.id, e.target.value)}
-              >
-                <option value="">— буква —</option>
-                {question.options.map((opt) => (
-                  <option
-                    key={opt.id}
-                    value={opt.id}
-                    disabled={used.has(opt.id) && pairs[row.id] !== opt.id}
-                  >
-                    {opt.id}
-                  </option>
-                ))}
-              </select>
+              <div className="admin-match__keys" role="group" aria-label={`Ответ для строки ${row.id}`}>
+                {question.options.map((opt) => {
+                  const on = pickedFor(row.id).includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={on}
+                      className={`matching-chip matching-chip--sm${on ? " is-on" : ""}`}
+                      onClick={() => togglePair(row.id, opt.id)}
+                    >
+                      {opt.id}
+                    </button>
+                  );
+                })}
+              </div>
               <button
                 type="button"
                 className="admin-match__remove"
@@ -462,7 +469,8 @@ function MatchingKey({
         <div className="admin-match__col">
           <strong>Варианты</strong>
           {question.options.map((opt) => {
-            const pairedRow = question.rows.find((r) => pairs[r.id] === opt.id);
+            const pairedRows = question.rows.filter((r) => pickedFor(r.id).includes(opt.id));
+            const pairedRow = pairedRows[0];
             return (
               <div
                 key={opt.id}
@@ -474,7 +482,7 @@ function MatchingKey({
                   onChange={(e) => updateOption(opt.id, e.target.value)}
                 />
                 <span className="admin-match__pair">
-                  {pairedRow ? `← ${pairedRow.id}` : ""}
+                  {pairedRows.length ? `← ${pairedRows.map((r) => r.id).join(", ")}` : ""}
                 </span>
               </div>
             );

@@ -5,7 +5,7 @@ import { attempts, tests, toObjectId, users } from "../db.js";
 import { adminRequired, type AuthedRequest } from "../auth.js";
 import { validateTestPayload, type Question } from "../scoring.js";
 import { persistCoverImage, persistQuestionImages, storeImage } from "../gridfs.js";
-import { parsePdfBuffer, toTestQuestions } from "../pdfParser.js";
+import { importTestFile } from "../importTest.js";
 import { isUuid, newTestId } from "../ids.js";
 import { getPricing, savePricing } from "../settings.js";
 import { buildEntPoolCoverage } from "../ent.js";
@@ -705,54 +705,78 @@ adminRouter.post("/tests/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-adminRouter.post("/tests/parse-pdf", upload.single("file"), async (req, res) => {
+const IMPORT_EXT = /\.(pdf|docx)$/i;
+
+async function handleImport(req: AuthedRequest, res: import("express").Response) {
   try {
     if (!req.file) {
       res.status(400).json({ error: "Файл не загружен (field: file)" });
       return;
     }
     const filename = decodeUploadName(req.file.originalname);
-    if (!/\.pdf$/i.test(filename) && req.file.mimetype !== "application/pdf") {
-      res.status(400).json({ error: "Нужен PDF-файл" });
+    if (/\.doc$/i.test(filename)) {
+      res.status(400).json({
+        error: "Старый формат .doc не поддерживается. Сохраните файл в Word как .docx",
+      });
+      return;
+    }
+    if (!IMPORT_EXT.test(filename) && req.file.mimetype !== "application/pdf") {
+      res.status(400).json({ error: "Нужен PDF или Word (.docx)" });
       return;
     }
 
-    const parsed = await parsePdfBuffer(req.file.buffer);
-    if (parsed.questions.length === 0) {
+    const imported = await importTestFile(req.file.buffer, filename);
+    const variants = imported.variants.filter((v) => v.questions.length > 0);
+    if (variants.length === 0) {
       res.status(400).json({
         error:
-          "Не удалось распознать вопросы. Проверьте, что PDF текстовый (не скан).",
+          imported.kind === "pdf"
+            ? "Не удалось распознать вопросы. Проверьте, что PDF текстовый (не скан)."
+            : "Не удалось распознать вопросы. Вопросы должны быть пронумерованы (1., 2., …), варианты — A), B), C), D).",
       });
       return;
     }
 
-    // A short first line before question 1 is the subject ("География").
-    const subject =
-      parsed.title && parsed.title.length <= 40 ? parsed.title : "География";
-    const draft = {
-      id: newTestId(),
-      title: `ҰБТ — ${filename.replace(/\.pdf$/i, "")}`,
-      titleKz: `ҰБТ — ${filename.replace(/\.pdf$/i, "")}`,
-      section: subject,
-      examType: "ENT",
-      subject,
-      durationMinutes: 50,
-      isFree: true,
-      priceTenge: null as number | null,
-      description: `Импорт из PDF «${filename}».`,
-      questions: toTestQuestions(parsed.questions),
-    };
+    const base = filename.replace(IMPORT_EXT, "");
+    const subject = imported.subject || "География";
+    const drafts = variants.map((v) => {
+      const name = variants.length > 1 ? `${base} · ${v.label}` : base;
+      return {
+        label: v.label || "1-нұсқа",
+        keyed: v.keyed,
+        total: v.questions.length,
+        draft: {
+          id: newTestId(),
+          title: `ҰБТ — ${name}`,
+          titleKz: `ҰБТ — ${name}`,
+          section: subject,
+          examType: "ENT",
+          subject,
+          durationMinutes: 50,
+          isFree: true,
+          priceTenge: null as number | null,
+          description: `Импорт из файла «${filename}».`,
+          questions: v.questions,
+        },
+      };
+    });
 
     res.json({
       ok: true,
-      filename: filename,
-      parse: parsed,
-      draft,
+      filename,
+      kind: imported.kind,
+      pages: imported.pages,
+      steps: imported.steps,
+      drafts,
     });
   } catch (e) {
     console.error(e);
     res.status(400).json({
-      error: e instanceof Error ? e.message : "Ошибка разбора PDF",
+      error: e instanceof Error ? e.message : "Ошибка разбора файла",
     });
   }
-});
+}
+
+adminRouter.post("/tests/parse-file", upload.single("file"), handleImport);
+// Old path kept for cached admin pages.
+adminRouter.post("/tests/parse-pdf", upload.single("file"), handleImport);

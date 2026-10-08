@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 import { PDFParse } from "pdf-parse";
 import type { Question } from "./scoring.js";
 import { extractYellowHighlights, type HighlightExtract } from "./yellowHighlights.js";
+import { buildTests, plainLine, type ParsedQuestion } from "./testBuilder.js";
+
+export type { ParsedQuestion };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const UPLOADS_DIR = path.join(__dirname, "..", "data", "uploads");
@@ -21,23 +24,6 @@ const LETTER_MAP: Record<string, string> = {
   Т: "T",
   Х: "X",
 };
-
-export interface ParsedQuestion {
-  id: number;
-  type: "single_choice" | "multiple_choice" | "matching";
-  text: string;
-  options: { id: string; label: string }[];
-  rows?: { id: string; label: string }[];
-  hasImageHint: boolean;
-  /** data: URLs for preview, or /uploads/... after persist */
-  images?: string[];
-  /** Reading passage the question refers to. */
-  context?: string;
-  /** Filled from yellow highlights in the PDF, if present. */
-  detectedAnswer?: string;
-  detectedAnswers?: string[];
-  detectedMatch?: Record<string, string>;
-}
 
 export interface ParsePdfResult {
   pages: number;
@@ -190,167 +176,20 @@ function parseMatching(body: string) {
   return { text: prompt || "Сәйкестендіру", rows, options };
 }
 
-const OPTION_LINE = /^\s*([A-Fa-fАВСЕавсе])\s*\)\s*/;
-const QUESTION_LINE = /^\s*(\d{1,3})\s*[.)]\s*(.*)$/;
-const CONTEXT_HINT = /мәтін|текст|контекст/i;
 const OPTION_LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
-/** Text pieces "А) …" / "1. …" in order, keeping only the expected next marker. */
-function splitMarkers(body: string) {
-  const re = /(?:^|\s)([A-FАВСЕ]\s*\)|\d\s*[.)])\s*/g;
-  const pieces: { kind: "letter" | "number"; key: string; start: number; end: number }[] = [];
-  let nextLetter = 0;
-  let nextNumber = 1;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(body))) {
-    const raw = m[1].replace(/\s+/g, "");
-    const isLetter = /\)$/.test(raw) && !/^\d/.test(raw);
-    if (isLetter) {
-      const letter = normalizeLetter(raw[0]);
-      if (letter !== OPTION_LETTERS[nextLetter]) continue;
-      nextLetter += 1;
-      pieces.push({ kind: "letter", key: letter, start: m.index, end: m.index + m[0].length });
-    } else {
-      const n = Number(raw[0]);
-      if (n !== nextNumber) continue;
-      nextNumber += 1;
-      pieces.push({ kind: "number", key: String(n), start: m.index, end: m.index + m[0].length });
-    }
-  }
-  return pieces;
-}
-
 /**
- * Matching laid out as two interleaved columns, e.g.
- *   А) Циклон 1.қысы суық … 2.ауа райы … В) Антициклон 3.… 4.…
- * Whichever marker kind comes first is the left column (rows). Result is
- * normalised to rows "1","2",… and options "A","B",… like the rest of the app.
- */
-function parseInterleavedMatching(body: string) {
-  const pieces = splitMarkers(body);
-  const letters = pieces.filter((p) => p.kind === "letter");
-  const numbers = pieces.filter((p) => p.kind === "number");
-  if (letters.length < 2 || numbers.length < 2 || pieces.length === 0) return null;
-
-  const textOf = (i: number) =>
-    cleanText(body.slice(pieces[i].end, pieces[i + 1]?.start ?? body.length));
-  const rowsKind = pieces[0].kind;
-  const rowsRaw: string[] = [];
-  const optsRaw: string[] = [];
-  pieces.forEach((p, i) => (p.kind === rowsKind ? rowsRaw : optsRaw).push(textOf(i)));
-
-  return {
-    text: cleanText(body.slice(0, pieces[0].start)),
-    rows: rowsRaw.map((label, i) => ({ id: String(i + 1), label })),
-    options: optsRaw.map((label, i) => ({ id: OPTION_LETTERS[i] ?? String(i + 1), label })),
-  };
-}
-
-/**
- * Fallback for plain Word-exported tests without section headers:
- * "1.Вопрос" (no space), options on their own lines "А) …", a reading text
- * between questions, matching in two columns, 5–6 options = multiple choice.
+ * Plain tests without section headers ("1.Вопрос", options on their own
+ * lines, matching in two columns): handled by the shared builder.
  */
 function buildQuestionsFlat(text: string) {
-  const lines = text.split(/\r?\n/);
-  const starts: { id: number; line: number }[] = [];
-  let expected = 1;
-  lines.forEach((line, index) => {
-    const m = QUESTION_LINE.exec(line);
-    if (!m) return;
-    const id = Number(m[1]);
-    // Questions are numbered 1,2,3… — anything else is a matching item.
-    if (id !== expected) return;
-    starts.push({ id, line: index });
-    expected += 1;
-  });
-
-  const title = cleanText(lines.slice(0, starts[0]?.line ?? 0).join(" "));
-  const questions: ParsedQuestion[] = [];
-  const contexts: { title: string; text: string }[] = [];
-  let pendingContext = "";
-
-  starts.forEach((start, i) => {
-    const chunkLines = lines.slice(start.line, starts[i + 1]?.line ?? lines.length);
-    chunkLines[0] = QUESTION_LINE.exec(chunkLines[0])![2];
-    const body = chunkLines.join("\n");
-
-    const firstOption = chunkLines.findIndex((l) => OPTION_LINE.test(l));
-    const promptPart = firstOption >= 0 ? chunkLines.slice(0, firstOption).join(" ") : body;
-    const isMatching =
-      /сәйкестендір|соответств/i.test(promptPart) ||
-      (firstOption >= 0 && /\s\d\s*[.)]\s*\S/.test(chunkLines[firstOption]));
-
-    const context = CONTEXT_HINT.test(promptPart) ? pendingContext : "";
-    if (!CONTEXT_HINT.test(promptPart)) pendingContext = "";
-
-    if (isMatching) {
-      const parsed = parseInterleavedMatching(body);
-      if (parsed && parsed.rows.length >= 2 && parsed.options.length >= 2) {
-        questions.push({
-          id: start.id,
-          type: "matching",
-          text: parsed.text || `Сәйкестендіру №${start.id}`,
-          rows: parsed.rows,
-          options: parsed.options,
-          hasImageHint: /сурет|карта|кесте/i.test(parsed.text),
-          ...(context ? { context } : {}),
-        });
-        return;
-      }
-    }
-
-    if (firstOption < 0) return;
-    const options: { id: string; label: string }[] = [];
-    let tail: string[] = [];
-    for (const line of chunkLines.slice(firstOption)) {
-      const om = OPTION_LINE.exec(line);
-      if (om) {
-        options.push({ id: normalizeLetter(om[1]), label: line.slice(om[0].length) });
-        tail = [];
-        continue;
-      }
-      const last = options[options.length - 1];
-      // A wrapped option continues in lower case; a capitalised line after
-      // the last option starts free text (usually the reading passage).
-      if (tail.length === 0 && /^\s*[a-zа-яәіңғүұқөһё0-9(«"-]/.test(line)) {
-        last.label += ` ${line}`;
-      } else if (line.trim()) {
-        tail.push(line);
-      }
-    }
-    for (const o of options) o.label = cleanText(o.label);
-    if (options.length < 2) return;
-
-    const tailText = cleanText(tail.join(" "));
-    if (tailText.length >= 80) {
-      // Keep a short heading line ("Мұнай өнеркәсібі") separate from the body.
-      const heading = cleanText(tail[0]);
-      pendingContext =
-        tail.length > 1 && heading.length <= 60 && !/[.!?]$/.test(heading)
-          ? `${heading}\n${cleanText(tail.slice(1).join(" "))}`
-          : tailText;
-      contexts.push({ title: cleanText(tail[0]), text: pendingContext });
-    } else if (tailText) {
-      options[options.length - 1].label = cleanText(
-        `${options[options.length - 1].label} ${tailText}`,
-      );
-    }
-
-    const prompt = cleanText(promptPart);
-    const multi =
-      options.length >= 5 || /\(-\s*(дар|дер|тар|тер|лар|лер|лары|лері)\)/i.test(prompt);
-    questions.push({
-      id: start.id,
-      type: multi ? "multiple_choice" : "single_choice",
-      text: prompt,
-      options,
-      hasImageHint: /сурет|карта|кесте/i.test(prompt),
-      ...(context ? { context } : {}),
-    });
-  });
-
-  return { questions, contexts, title };
+  const built = buildTests(text.split(/\r?\n/).map(plainLine), { pdf: true });
+  const first = built.variants[0];
+  return {
+    questions: first?.questions ?? [],
+    contexts: first?.contexts ?? [],
+    title: built.title,
+  };
 }
 
 function buildQuestionsFromText(rawText: string) {

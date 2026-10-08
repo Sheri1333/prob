@@ -539,37 +539,22 @@ export const api = {
     );
   },
 
-  adminParsePdf(file: File) {
+  /** Parse a PDF or Word (.docx) test; one draft per variant in the file. */
+  adminParseFile(file: File) {
     const form = new FormData();
     form.append("file", file);
     return request<{
       ok: boolean;
       filename: string;
-      parse: {
-        pages: number;
-        chars: number;
-        steps: { step: number; name: string; detail: string }[];
-        sections: { key: string; label: string; chars: number }[];
-        contexts: { title: string; text: string }[];
-        questions: Array<{
-          id: number;
-          type: "single_choice" | "multiple_choice" | "matching";
-          text: string;
-          options: { id: string; label: string }[];
-          rows?: { id: string; label: string }[];
-          hasImageHint: boolean;
-          images?: string[];
-        }>;
-        byType: {
-          single_choice: number;
-          matching: number;
-          multiple_choice: number;
-        };
-        withImages: number;
-        imagesAttached: number;
-        keysFromHighlight?: number;
-      };
-      draft: TestDefinition & { description?: string; priceTenge?: number | null };
-    }>("/admin/tests/parse-pdf", { method: "POST", body: form });
+      kind: "pdf" | "docx";
+      pages: number;
+      steps: { step: number; name: string; detail: string }[];
+      drafts: Array<{
+        label: string;
+        keyed: number;
+        total: number;
+        draft: TestDefinition & { description?: string; priceTenge?: number | null };
+      }>;
+    }>("/admin/tests/parse-file", { method: "POST", body: form });
   },
 };

@@ -19,13 +19,16 @@ export function isAnswerKeyComplete(question: Question): boolean {
       return Boolean(
         question.rows?.length &&
           question.correctAnswers &&
-          question.rows.every(
-            (row) =>
-              question.correctAnswers?.[row.id] &&
-              question.options.some(
-                (o) => o.id === question.correctAnswers?.[row.id],
-              ),
-          ),
+          question.rows.every((row) => {
+            const ids = (question.correctAnswers?.[row.id] ?? "")
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            return (
+              ids.length > 0 &&
+              ids.every((id) => question.options.some((o) => o.id === id))
+            );
+          }),
       );
     default:
       return false;

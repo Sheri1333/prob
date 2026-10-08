@@ -101,26 +101,32 @@ export function MatchingQuestion({
   onChange,
   onZoom,
 }: MatchingQuestionProps) {
-  const placeholder = lang === "kz" ? "Жауапты таңдаңыз" : "Выберите ответ";
-  const used = new Set(
-    Object.entries(value)
-      .filter(([, optionId]) => optionId)
-      .map(([, optionId]) => optionId),
-  );
-  const imageMatching = rows.some((row) => row.image);
+  const picked = (rowId: string) =>
+    (value[rowId] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  // A row may take one or several options (ҰБТ: "A — 3, 4").
+  const toggle = (rowId: string, optionId: string) => {
+    const current = picked(rowId);
+    const next = current.includes(optionId)
+      ? current.filter((id) => id !== optionId)
+      : [...current, optionId].sort();
+    onChange({ ...value, [rowId]: next.join(",") });
+  };
+  const hint =
+    lang === "kz"
+      ? "Әр жолға бір немесе бірнеше жауап таңдаңыз"
+      : "Для каждой строки выберите один или несколько ответов";
 
   return (
     <div className="matching-block">
-      {!imageMatching && (
-        <div className="matching-legend">
-          {options.map((opt) => (
-            <div key={opt.id} className="matching-legend__item">
-              <span className="matching-legend__id">{opt.id})</span>
-              <span>{opt.label}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <p className="matching-hint">{hint}</p>
+      <div className="matching-legend">
+        {options.map((opt) => (
+          <div key={opt.id} className="matching-legend__item">
+            <span className="matching-legend__id">{opt.id})</span>
+            <span>{opt.label}</span>
+          </div>
+        ))}
+      </div>
       <div className="matching-table">
         {rows.map((row) => {
           const imageUrl = row.image ? mediaUrl(row.image) : "";
@@ -152,28 +158,27 @@ export function MatchingQuestion({
                   {row.label ? <span>{row.label}</span> : null}
                 </div>
               </div>
-              <select
-                className="matching-row__select"
-                value={value[row.id] ?? ""}
-                onChange={(e) =>
-                  onChange({ ...value, [row.id]: e.target.value })
-                }
+              <div
+                className="matching-row__choices"
+                role="group"
+                aria-label={row.label || row.id}
               >
-                <option value="">{placeholder}</option>
-                {options.map((opt) => (
-                  <option
-                    key={opt.id}
-                    value={opt.id}
-                    disabled={used.has(opt.id) && value[row.id] !== opt.id}
-                  >
-                    {imageMatching
-                      ? opt.label || opt.id
-                      : opt.label
-                        ? `${opt.id}) ${opt.label}`
-                        : opt.id}
-                  </option>
-                ))}
-              </select>
+                {options.map((opt) => {
+                  const on = picked(row.id).includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      aria-pressed={on}
+                      title={opt.label}
+                      className={`matching-chip${on ? " is-on" : ""}`}
+                      onClick={() => toggle(row.id, opt.id)}
+                    >
+                      {opt.id}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           );
         })}

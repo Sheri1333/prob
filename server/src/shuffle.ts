@@ -57,8 +57,17 @@ function mapValue(
   const one = (id: string) => map[id] ?? id;
   if (typeof value === "string") return one(value);
   if (Array.isArray(value)) return value.map((v) => one(String(v)));
+  // Matching rows may hold several options: "A,C".
   const out: Record<string, string> = {};
-  for (const [row, id] of Object.entries(value)) out[row] = one(String(id));
+  for (const [row, ids] of Object.entries(value)) {
+    out[row] = String(ids)
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .map(one)
+      .sort()
+      .join(",");
+  }
   return out;
 }
 

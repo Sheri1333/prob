@@ -4705,3 +4705,159 @@ label.admin-btn--primary:hover {
   line-height: 1.6;
   white-space: pre-line;
 }
+
+/* Matching: one or several options per row, as toggle chips */
+.matching-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--exam-on-variant, var(--text-muted));
+}
+
+.matching-row__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.matching-chip {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.85rem;
+  border: 1.5px solid var(--exam-outline, var(--border));
+  border-radius: 0.65rem;
+  background: var(--exam-surface, var(--white));
+  color: var(--exam-on-surface, var(--text));
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.matching-chip:hover {
+  border-color: var(--exam-primary, var(--blue));
+}
+
+.matching-chip.is-on {
+  background: var(--exam-primary, var(--blue));
+  border-color: var(--exam-primary, var(--blue));
+  color: #fff;
+}
+
+.matching-chip:focus-visible {
+  outline: 3px solid var(--blue-light);
+  outline-offset: 2px;
+}
+
+.matching-chip--sm {
+  min-width: 2.1rem;
+  min-height: 2.1rem;
+  padding: 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.admin-match__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+/* Imported question text: statements, tables and program code */
+.exam-card__details {
+  margin: -0.75rem 0 1.5rem;
+}
+
+.rich-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.rich-text__p {
+  margin: 0;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.rich-text__heading {
+  margin: 0.25rem 0 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.rich-text__code {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.6rem;
+  background: var(--exam-container-low, var(--bg));
+  border: 1px solid var(--border-soft);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* ">=" must stay ">=" in an informatics test, not turn into "≥". */
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.rich-text__table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.rich-text__table {
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  min-width: 60%;
+}
+
+.rich-text__table th,
+.rich-text__table td {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.rich-text__table th {
+  background: var(--blue-light);
+  font-weight: 700;
+}
+
+.exam-context__body.rich-text {
+  margin-top: 0.5rem;
+  white-space: normal;
+}
+
+/* Admin: variants found in one imported file */
+.admin-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+}
+
+.admin-variants__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-variants__tab.is-active {
+  border-color: var(--blue);
+  background: var(--blue-light);
+  color: var(--blue-dark);
+}
+
+.admin-variants__saved {
+  color: var(--success);
+  font-weight: 800;
+}

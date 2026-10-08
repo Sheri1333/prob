@@ -1,4 +1,5 @@
 import { mediaUrl } from "../api/client";
+import { RichText } from "./RichText";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import type { AnswerValue, Question } from "../types/test";
@@ -16,18 +17,23 @@ interface QuestionViewProps {
   onZoom?: (src: string) => void;
 }
 
-function QuestionContext({ text, lang }: { text: string; lang: Lang }) {
+/** Older imports stored "Heading\nbody" without the "## " marker. */
+function withHeading(text: string): string {
+  if (text.includes("## ") || text.includes("|")) return text;
   const [first, ...rest] = text.split("\n");
-  const heading = rest.length > 0 ? first : null;
-  const body = rest.length > 0 ? rest.join("\n") : first;
+  return rest.length > 0 && first.length <= 60 && !/[.!?:;]$/.test(first)
+    ? `## ${first}\n${rest.join("\n")}`
+    : text;
+}
+
+function QuestionContext({ text, lang }: { text: string; lang: Lang }) {
   return (
     <section className="exam-context" aria-label={lang === "kz" ? "Мәтін" : "Текст"}>
       <span className="exam-context__badge">
         <span className="material-symbols-outlined">menu_book</span>
         {lang === "kz" ? "Мәтінді оқыңыз" : "Прочитайте текст"}
       </span>
-      {heading && <h3 className="exam-context__title">{heading}</h3>}
-      <p className="exam-context__body">{body}</p>
+      <RichText text={withHeading(text)} className="exam-context__body" />
     </section>
   );
 }
@@ -39,10 +45,14 @@ export function QuestionView({
   onAnswerChange,
   onZoom,
 }: QuestionViewProps) {
+  // First line is the question; numbered statements, tables and code follow.
+  const [titleLine, ...more] = question.text.split("\n");
+  const details = more.join("\n").trim();
   return (
     <article className="exam-card">
       {question.context && <QuestionContext text={question.context} lang={lang} />}
-      <h2 className="exam-card__title">{question.text}</h2>
+      <h2 className="exam-card__title">{titleLine}</h2>
+      {details && <RichText text={details} className="exam-card__details" />}
 
       {question.images && question.images.length > 0 && (
         <div

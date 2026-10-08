@@ -16,7 +16,14 @@ import {
 } from "../utils/answerKey";
 
 type Tab = "dashboard" | "tests" | "editor" | "pricing" | "email" | "users";
-type ParseResult = Awaited<ReturnType<typeof api.adminParsePdf>>;
+type ParseResult = Awaited<ReturnType<typeof api.adminParseFile>>;
+
+interface VariantDraft {
+  label: string;
+  meta: typeof EMPTY_META;
+  questions: Question[];
+  saved: boolean;
+}
 type AdminUser = Awaited<ReturnType<typeof api.adminUsers>>["users"][number];
 
 const EMPTY_META = {
@@ -48,6 +55,9 @@ export function AdminPage() {
   const [parsing, setParsing] = useState(false);
   const [savingPreview, setSavingPreview] = useState(false);
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
+  // A Word file may hold several variants; each is edited and saved separately.
+  const [variants, setVariants] = useState<VariantDraft[]>([]);
+  const [variantIndex, setVariantIndex] = useState(0);
   const [draftQuestions, setDraftQuestions] = useState<Question[]>([]);
   const [previewMeta, setPreviewMeta] = useState(EMPTY_META);
   const [openPreviewId, setOpenPreviewId] = useState<number | null>(1);
@@ -176,6 +186,8 @@ export function AdminPage() {
 
   function resetEditor() {
     setParseResult(null);
+    setVariants([]);
+    setVariantIndex(0);
     setDraftQuestions([]);
     setPreviewMeta(EMPTY_META);
     setOpenPreviewId(null);
@@ -185,6 +197,8 @@ export function AdminPage() {
   function startManual() {
     const first = createBlankQuestion(1);
     setParseResult(null);
+    setVariants([]);
+    setVariantIndex(0);
     setDraftQuestions([first]);
     setPreviewMeta({ ...EMPTY_META, id: crypto.randomUUID() });
     setOpenPreviewId(1);
@@ -208,34 +222,56 @@ export function AdminPage() {
     });
   }
 
-  async function handlePdfFile(file: File | null) {
+  function loadVariant(v: VariantDraft) {
+    setDraftQuestions(v.questions);
+    setPreviewMeta(v.meta);
+    setOpenPreviewId(
+      v.questions.find((q) => !isAnswerKeyComplete(q))?.id ?? v.questions[0]?.id ?? null,
+    );
+  }
+
+  function switchVariant(index: number) {
+    if (index === variantIndex) return;
+    const next = variants.map((v, i) =>
+      i === variantIndex ? { ...v, meta: previewMeta, questions: draftQuestions } : v,
+    );
+    setVariants(next);
+    setVariantIndex(index);
+    loadVariant(next[index]);
+  }
+
+  async function handleImportFile(file: File | null) {
     if (!file) return;
     setParsing(true);
     try {
-      const result = await api.adminParsePdf(file);
+      const result = await api.adminParseFile(file);
+      const list: VariantDraft[] = result.drafts.map(({ label, draft: d }) => ({
+        label,
+        saved: false,
+        questions: d.questions,
+        meta: {
+          id: d.id || crypto.randomUUID(),
+          titleKz: d.titleKz || d.title,
+          section: d.section,
+          subject: d.subject,
+          durationMinutes: d.durationMinutes,
+          description: d.description ?? "",
+        },
+      }));
       setParseResult(result);
-      setDraftQuestions(result.draft.questions);
-      const d = result.draft;
-      setPreviewMeta({
-        id: d.id || crypto.randomUUID(),
-        titleKz: d.titleKz || d.title,
-        section: d.section,
-        subject: d.subject,
-        durationMinutes: d.durationMinutes,
-        description: d.description ?? "",
-      });
-      setOpenPreviewId(
-        result.draft.questions.find((q) => !isAnswerKeyComplete(q))?.id ??
-          result.parse.questions[0]?.id ??
-          null,
-      );
+      setVariants(list);
+      setVariantIndex(0);
+      loadVariant(list[0]);
       setTab("editor");
+      const total = result.drafts.reduce((n, d) => n + d.total, 0);
+      const keyed = result.drafts.reduce((n, d) => n + d.keyed, 0);
       toast(
         "ok",
-        `PDF разобран: ${result.parse.questions.length} вопросов, ключей из PDF: ${result.parse.keysFromHighlight ?? 0}`,
+        (list.length > 1 ? `Вариантов: ${list.length}. ` : "") +
+          `Вопросов: ${total}, с ключом: ${keyed}`,
       );
     } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Ошибка разбора PDF");
+      toast("error", err instanceof Error ? err.message : "Ошибка разбора файла");
     } finally {
       setParsing(false);
     }
@@ -273,6 +309,17 @@ export function AdminPage() {
       };
       await api.adminSaveTest(payload);
       setPreviewMeta((m) => ({ ...m, id }));
+      const rest = variants.filter((v, i) => i !== variantIndex && !v.saved);
+      setVariants((prev) =>
+        prev.map((v, i) =>
+          i === variantIndex
+            ? { ...v, saved: true, meta: { ...previewMeta, id }, questions: draftQuestions }
+            : v,
+        ),
+      );
+      if (rest.length > 0) {
+        toast("ok", `Осталось сохранить: ${rest.map((v) => v.label).join(", ")}`);
+      }
       toast(
         "ok",
         `Тест «${payload.titleKz}» сохранён · ${payload.questions.length} вопросов`,
@@ -344,6 +391,8 @@ export function AdminPage() {
     try {
       const { test } = await api.adminGetTest(id);
       setParseResult(null);
+    setVariants([]);
+    setVariantIndex(0);
       setDraftQuestions(test.questions);
       setPreviewMeta({
         id: test.id,
@@ -845,22 +894,22 @@ export function AdminPage() {
                   </button>
                 </article>
                 <article className="admin-create-card">
-                  <h2>Из PDF</h2>
+                  <h2>Из PDF или Word</h2>
                   <p>
-                    Парсер вытащит вопросы и картинки. Ключ для выбора — жёлтый
-                    маркер или жирный шрифт; красный/зелёный текст — для
-                    сәйкестендіру. Если неуверен — ключ пустой (карта с буквами
-                    и т.п. — вручную).
+                    Парсер вытащит вопросы, тексты, таблицы и картинки. Ключи:
+                    жирный шрифт, маркер или цвет у ответа, строки «Жауабы: I – C»
+                    или таблица/список ответов в конце файла. Если в файле
+                    несколько вариантов — каждый станет отдельным тестом.
                   </p>
                   <label className="admin-btn admin-btn--primary">
-                    {parsing ? "Разбор PDF..." : "Выбрать PDF"}
+                    {parsing ? "Разбор файла..." : "Выбрать PDF или .docx"}
                     <input
                       type="file"
-                      accept="application/pdf,.pdf"
+                      accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                       hidden
                       disabled={parsing}
                       onChange={(e) => {
-                        void handlePdfFile(e.target.files?.[0] ?? null);
+                        void handleImportFile(e.target.files?.[0] ?? null);
                         e.target.value = "";
                       }}
                     />
@@ -876,19 +925,38 @@ export function AdminPage() {
                     <span>
                       Файл: <strong>{parseResult.filename}</strong>
                     </span>
+                    {parseResult.kind === "pdf" && (
+                      <span>
+                        Страниц: <strong>{parseResult.pages}</strong>
+                      </span>
+                    )}
                     <span>
-                      Страниц: <strong>{parseResult.parse.pages}</strong>
+                      Вопросов: <strong>{draftQuestions.length}</strong>
                     </span>
                     <span>
-                      Вопросов:{" "}
-                      <strong>{parseResult.parse.questions.length}</strong>
-                    </span>
-                    <span>
-                      Ключей из PDF:{" "}
+                      С ключом:{" "}
                       <strong>
-                        {parseResult.parse.keysFromHighlight ?? 0}
+                        {keyProgress} / {draftQuestions.length}
                       </strong>
                     </span>
+                  </div>
+                )}
+
+                {variants.length > 1 && (
+                  <div className="admin-variants" role="tablist" aria-label="Варианты из файла">
+                    {variants.map((v, i) => (
+                      <button
+                        key={`${v.label}-${i}`}
+                        type="button"
+                        role="tab"
+                        aria-selected={i === variantIndex}
+                        className={`admin-variants__tab${i === variantIndex ? " is-active" : ""}`}
+                        onClick={() => switchVariant(i)}
+                      >
+                        {v.label}
+                        {v.saved && <span className="admin-variants__saved">✓</span>}
+                      </button>
+                    ))}
                   </div>
                 )}
 

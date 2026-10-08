@@ -79,17 +79,23 @@ export async function persistQuestionImages(
   questions: Question[],
 ): Promise<Question[]> {
   const out: Question[] = [];
+  // A passage picture is shared by several questions — store it once.
+  const saved = new Map<string, string>();
   for (const q of questions) {
     let next: Question = q;
     if (q.images?.length) {
       const images: string[] = [];
       for (let i = 0; i < q.images.length; i++) {
-        images.push(
-          await persistSrc(q.images[i], `q${q.id}_${i}`, {
+        const src = q.images[i];
+        let url = saved.get(src);
+        if (!url) {
+          url = await persistSrc(src, `q${q.id}_${i}`, {
             kind: "question",
             questionId: q.id,
-          }),
-        );
+          });
+          saved.set(src, url);
+        }
+        images.push(url);
       }
       next = { ...next, images };
     }

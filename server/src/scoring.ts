@@ -90,14 +90,27 @@ function arraysEqual(a: string[], b: string[]): boolean {
   return sa.every((v, i) => v === sb[i]);
 }
 
+/**
+ * A matching row may take several options ("A,C"); compare as sets so the
+ * order a student clicked them in does not matter.
+ */
+export function matchIds(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  return [...new Set(value.split(",").map((s) => s.trim()).filter(Boolean))].sort();
+}
+
+function sameMatch(a: unknown, b: unknown): boolean {
+  const x = matchIds(a);
+  const y = matchIds(b);
+  return x.length > 0 && x.length === y.length && x.every((v, i) => v === y[i]);
+}
+
 function recordsEqual(
   a: Record<string, string>,
   b: Record<string, string>,
 ): boolean {
-  const keysA = Object.keys(a);
-  const keysB = Object.keys(b);
-  if (keysA.length !== keysB.length) return false;
-  return keysA.every((k) => a[k] === b[k]);
+  const keys = Object.keys(b);
+  return keys.length > 0 && keys.every((k) => sameMatch(a[k], b[k]));
 }
 
 export function isQuestionCorrect(
@@ -168,7 +181,7 @@ function partialPoints(
     const rowIds = question.rows.map((r) => r.id);
     if (rowIds.length < 2) return 0;
     const wrong = rowIds.filter(
-      (id) => answer[id] !== question.correctAnswers[id],
+      (id) => !sameMatch(answer[id], question.correctAnswers[id]),
     ).length;
     return wrong === 1 ? 1 : 0;
   }
@@ -245,12 +258,13 @@ export function isAnswerKeyComplete(question: Question): boolean {
     case "matching":
       return (
         question.rows.length > 0 &&
-        question.rows.every((row) =>
-          Boolean(question.correctAnswers[row.id]),
-        ) &&
-        question.rows.every((row) =>
-          question.options.some((o) => o.id === question.correctAnswers[row.id]),
-        )
+        question.rows.every((row) => {
+          const ids = matchIds(question.correctAnswers[row.id]);
+          return (
+            ids.length > 0 &&
+            ids.every((id) => question.options.some((o) => o.id === id))
+          );
+        })
       );
     default:
       return false;
