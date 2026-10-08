@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
@@ -16,6 +16,7 @@ import {
 } from "../utils/answerKey";
 
 type Tab = "dashboard" | "tests" | "editor" | "pricing" | "email" | "users";
+const TABS: Tab[] = ["dashboard", "tests", "editor", "pricing", "email", "users"];
 type ParseResult = Awaited<ReturnType<typeof api.adminParseFile>>;
 
 interface VariantDraft {
@@ -38,7 +39,23 @@ const EMPTY_META = {
 export function AdminPage() {
   const { user, loading, isAdmin, logout } = useAuth();
   const { toasts, push: toast, dismiss: dismissToast } = useToasts();
-  const [tab, setTab] = useState<Tab>("dashboard");
+  // The screen lives in the URL (?tab=…&test=…&user=…): each screen is a
+  // browser history entry, so Back returns to the previous admin screen and a
+  // reload reopens the same test.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab") as Tab | null;
+  const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : "dashboard";
+  const testParam = searchParams.get("test");
+  const userParam = searchParams.get("user");
+  const go = useCallback(
+    (next: Tab, extra: Record<string, string> = {}, replace = false) => {
+      const target = new URLSearchParams({ tab: next, ...extra });
+      if (target.toString() === searchParams.toString()) return;
+      setSearchParams(target, { replace });
+    },
+    [searchParams, setSearchParams],
+  );
+  const setTab = (next: Tab) => go(next);
 
   const [stats, setStats] = useState<Awaited<
     ReturnType<typeof api.adminStats>
@@ -166,6 +183,25 @@ export function AdminPage() {
       return hay.includes(q);
     });
   }, [tests, testQuery, testSubject, testQuestions]);
+
+  useEffect(() => {
+    if (!isAdmin || tab !== "editor" || !testParam) return;
+    if (previewMeta.id === testParam && draftQuestions.length > 0) return;
+    void loadTestForEdit(testParam, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, tab, testParam]);
+
+  useEffect(() => {
+    if (tab !== "users") return;
+    if (!userParam) {
+      if (selectedUser) setSelectedUser(null);
+      return;
+    }
+    if (selectedUser?.id === userParam) return;
+    const found = users.find((u) => u.id === userParam);
+    if (found) void openUserResults(found, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, userParam, users]);
 
   if (loading) {
     return <div className="page page--center">Загрузка...</div>;
@@ -309,6 +345,7 @@ export function AdminPage() {
       };
       await api.adminSaveTest(payload);
       setPreviewMeta((m) => ({ ...m, id }));
+      go("editor", { test: id }, true);
       const rest = variants.filter((v, i) => i !== variantIndex && !v.saved);
       setVariants((prev) =>
         prev.map((v, i) =>
@@ -387,7 +424,7 @@ export function AdminPage() {
     setEditorKeysText("");
   }
 
-  async function loadTestForEdit(id: string) {
+  async function loadTestForEdit(id: string, fromUrl = false) {
     try {
       const { test } = await api.adminGetTest(id);
       setParseResult(null);
@@ -403,7 +440,7 @@ export function AdminPage() {
         description: test.description ?? "",
       });
       setOpenPreviewId(test.questions[0]?.id ?? null);
-      setTab("editor");
+      if (!fromUrl) go("editor", { test: test.id });
       toast("ok", `Тест «${test.titleKz || test.title}» открыт`);
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Не удалось открыть тест");
@@ -487,8 +524,9 @@ export function AdminPage() {
     }
   }
 
-  async function openUserResults(u: AdminUser) {
+  async function openUserResults(u: AdminUser, fromUrl = false) {
     setSelectedUser(u);
+    if (!fromUrl) go("users", { user: u.id });
     setAttempts([]);
     try {
       setAttempts((await api.adminAttempts({ userId: u.id })).attempts);
@@ -708,7 +746,6 @@ export function AdminPage() {
                         key={u.id}
                         className="is-clickable"
                         onClick={() => {
-                          setTab("users");
                           void openUserResults({
                             id: u.id,
                             email: u.email,
@@ -1343,7 +1380,7 @@ export function AdminPage() {
                   <button
                     type="button"
                     className="admin-btn"
-                    onClick={() => setSelectedUser(null)}
+                    onClick={() => setTab("users")}
                   >
                     К пользователям
                   </button>
