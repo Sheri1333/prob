@@ -1,3 +1,4 @@
+import type { SyntheticEvent } from "react";
 import { mediaUrl } from "../api/client";
 import { RichText } from "./RichText";
 import type { Lang } from "../i18n/strings";
@@ -15,6 +16,15 @@ interface QuestionViewProps {
   answer: AnswerValue | undefined;
   onAnswerChange: (value: AnswerValue) => void;
   onZoom?: (src: string) => void;
+}
+
+/**
+ * PDF question pictures are rendered at 2 px per point; shown 1:1 the body
+ * text is ~22px and fractions stay readable. Never wider than the card.
+ */
+function showAtPrintSize(e: SyntheticEvent<HTMLImageElement>) {
+  const img = e.currentTarget;
+  img.style.width = `${img.naturalWidth}px`;
 }
 
 /** Older imports stored "Heading\nbody" without the "## " marker. */
@@ -48,23 +58,33 @@ export function QuestionView({
   // First line is the question; numbered statements, tables and code follow.
   const [titleLine, ...more] = question.text.split("\n");
   const details = more.join("\n").trim();
+  // Questions imported as pictures from a maths PDF have no text of their own.
+  const pageCut = !question.text.trim() && (question.images?.length ?? 0) > 0;
   return (
     <article className="exam-card">
       {question.context && <QuestionContext text={question.context} lang={lang} />}
-      <h2 className="exam-card__title">{titleLine}</h2>
+      {titleLine && <h2 className="exam-card__title">{titleLine}</h2>}
       {details && <RichText text={details} className="exam-card__details" />}
 
       {question.images && question.images.length > 0 && (
         <div
           className={`exam-card__media ${
-            question.images.length > 1 ? "exam-card__media--grid" : ""
+            pageCut
+              ? "exam-card__media--page"
+              : question.images.length > 1
+                ? "exam-card__media--grid"
+                : ""
           }`}
         >
           {question.images.map((src, i) => {
             const url = mediaUrl(src);
             return (
               <div key={`${i}-${src.slice(0, 40)}`} className="exam-card__figure">
-                <img src={url} alt="" />
+                <img
+                  src={url}
+                  alt=""
+                  onLoad={pageCut ? showAtPrintSize : undefined}
+                />
                 {onZoom && (
                   <button
                     type="button"

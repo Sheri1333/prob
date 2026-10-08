@@ -2,6 +2,7 @@ import { parseDocxBuffer } from "./docxParser.js";
 import { parsePdfBuffer, toTestQuestions } from "./pdfParser.js";
 import { isAnswerKeyComplete, type Question } from "./scoring.js";
 import { buildTests, fromDocLine } from "./testBuilder.js";
+import { countQuestionMarkers, importPdfAsImages, mathSymbolCount } from "./pdfQuestionImages.js";
 
 export interface ImportedVariant {
   label: string;
@@ -93,6 +94,28 @@ export async function importTestFile(buffer: Buffer, filename: string): Promise<
   }
 
   const parsed = await parsePdfBuffer(buffer);
+  // Formula-heavy PDFs (maths) are unreadable as text: fractions fall apart
+  // and fonts may be broken. Import each question as a picture instead.
+  const numbered = countQuestionMarkers(parsed.text);
+  const formulaHeavy = mathSymbolCount(parsed.text) > 30;
+  if (numbered >= 5 && (formulaHeavy || parsed.questions.length < numbered * 0.8)) {
+    const pictures = await importPdfAsImages(buffer);
+    if (pictures.questions.length >= parsed.questions.length) {
+      return {
+        kind: "pdf",
+        pages: pictures.pages,
+        title: "",
+        subject: guessSubject(base) || (formulaHeavy ? "Математика" : ""),
+        steps: [
+          { step: 1, name: "Режим", detail: "вопросы картинками (формулы сохраняются как в PDF)" },
+          { step: 2, name: "Вопросы", detail: `${pictures.questions.length} из ${numbered}` },
+          { step: 3, name: "Ключи", detail: "не размечены в PDF — вставьте списком (1-A 2-C … 31-A3,B4 36-ADF)" },
+          ...pictures.warnings.map((w, i) => ({ step: 4 + i, name: "Внимание", detail: w })),
+        ],
+        variants: [{ label: "", questions: pictures.questions, keyed: 0 }],
+      };
+    }
+  }
   const questions = toTestQuestions(parsed.questions);
   return {
     kind: "pdf",

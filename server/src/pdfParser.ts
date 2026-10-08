@@ -34,6 +34,8 @@ export interface ParsePdfResult {
   questions: ParsedQuestion[];
   /** First line of the PDF before question 1 (usually the subject). */
   title: string;
+  /** Extracted text, used to decide whether to import questions as pictures. */
+  text: string;
   byType: {
     single_choice: number;
     matching: number;
@@ -358,6 +360,7 @@ export function parsePdfText(rawText: string, pages = 0): ParsePdfResult {
     contexts: built.contexts,
     questions: built.questions,
     title: built.title,
+    text: rawText,
     byType,
     withImages,
     imagesAttached: 0,

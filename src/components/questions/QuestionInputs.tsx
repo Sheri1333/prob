@@ -119,6 +119,8 @@ export function MatchingQuestion({
   return (
     <div className="matching-block">
       <p className="matching-hint">{hint}</p>
+      {/* Picture-only tasks (maths PDF) show the values on the image. */}
+      {options.some((opt) => opt.label) && (
       <div className="matching-legend">
         {options.map((opt) => (
           <div key={opt.id} className="matching-legend__item">
@@ -127,6 +129,7 @@ export function MatchingQuestion({
           </div>
         ))}
       </div>
+      )}
       <div className="matching-table">
         {rows.map((row) => {
           const imageUrl = row.image ? mediaUrl(row.image) : "";

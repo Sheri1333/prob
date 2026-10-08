@@ -198,9 +198,24 @@ export function parseAnswerKeyText(text: string): ParsedAnswerKey[] {
     });
   };
 
+  // Rows as letters, options as numbers: "31. A-3 B-4", "31-A3,B4", "32. A-1,3 B-2".
+  const letterRows =
+    /(\d+)\s*[-:.)]\s*((?:[A-HА-Д]\s*[-–]?\s*\d(?:\s*,\s*\d)*\s*[;,]?\s*){2,})/g;
+  for (const match of trimmed.matchAll(letterRows)) {
+    const pairs: Record<string, string> = {};
+    for (const p of match[2].matchAll(/([A-HА-Д])\s*[-–]?\s*(\d(?:\s*,\s*\d)*)/g)) {
+      const row = ({ А: "A", В: "B", С: "C", Д: "D" } as Record<string, string>)[p[1]] ?? p[1];
+      pairs[row] = p[2].split(/\s*,\s*/).sort().join(",");
+    }
+    upsert({ questionId: Number(match[1]), letters: [], pairs });
+  }
+
+  // Later passes must not read "3 B" inside "A-3 B-4" as a key for question 3.
+  const rest = trimmed.replace(letterRows, " ");
+
   const pairLine =
     /(\d+)\s*[-:.)]\s*((?:\d+\s*[-:.]?\s*[A-Ha-h]\s*,?\s*){2,})/gi;
-  for (const match of trimmed.matchAll(pairLine)) {
+  for (const match of rest.matchAll(pairLine)) {
     const pairs = parsePairMap(match[2]);
     upsert({
       questionId: Number(match[1]),
@@ -209,7 +224,7 @@ export function parseAnswerKeyText(text: string): ParsedAnswerKey[] {
     });
   }
   const simple = /(\d+)\s*[-:.)]?\s*([A-Ha-h](?:\s*,?\s*[A-Ha-h])*)/gi;
-  for (const match of trimmed.matchAll(simple)) {
+  for (const match of rest.matchAll(simple)) {
     const questionId = Number(match[1]);
     if (byId.get(questionId)?.pairs) continue;
     upsert({ questionId, letters: uniqLetters(match[2]) });
@@ -264,7 +279,7 @@ export function applyAnswerKeys(
       for (const [rowId, optionId] of Object.entries(pairs)) {
         if (
           question.rows.some((row) => row.id === rowId) &&
-          question.options.some((o) => o.id === optionId)
+          optionId.split(",").every((id) => question.options.some((o) => o.id === id))
         ) {
           valid[rowId] = optionId;
         }

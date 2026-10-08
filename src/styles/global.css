@@ -4861,3 +4861,18 @@ label.admin-btn--primary:hover {
   color: var(--success);
   font-weight: 800;
 }
+
+/* Questions imported as pictures (maths PDF): natural print size, white page */
+.exam-card__media--page .exam-card__figure {
+  background: #fff;
+  border-color: var(--border-soft);
+  padding: 0.75rem;
+}
+
+.exam-card__media--page .exam-card__figure img {
+  width: auto;
+  max-width: 100%;
+  max-height: none;
+  height: auto;
+  background: #fff;
+}
