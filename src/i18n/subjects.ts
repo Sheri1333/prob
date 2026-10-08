@@ -27,8 +27,18 @@ const SUBJECT_KZ: Record<string, string> = {
   "основы предпринимательства и бизнеса": "Кәсіпкерлік және бизнес негіздері",
 };
 
+const SUBJECT_RU: Record<string, string> = Object.fromEntries(
+  Object.entries(SUBJECT_KZ).map(([ru, kz]) => [
+    kz.toLowerCase(),
+    ru.charAt(0).toUpperCase() + ru.slice(1),
+  ]),
+);
+// Spelling used in the ENT combo list.
+SUBJECT_RU["дүние жүзі тарихы"] = "Всемирная история";
+
+/** Subject name in the UI language; works for Russian or Kazakh input. */
 export function translateSubject(subject: string, lang: Lang): string {
-  if (lang !== "kz") return subject;
-  const found = SUBJECT_KZ[subject.trim().toLowerCase()];
-  return found ?? subject;
+  const key = subject.trim().toLowerCase();
+  if (lang === "kz") return SUBJECT_KZ[key] ?? subject;
+  return SUBJECT_RU[key] ?? subject;
 }

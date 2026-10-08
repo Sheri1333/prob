@@ -100,9 +100,7 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
             {state.sections.map((section, index) => (
               <tr key={section.testId}>
                 <td>
-                  {lang === "kz"
-                    ? section.titleKz || translateSubject(section.subject, lang)
-                    : section.title || section.subject}
+                  {translateSubject(section.subject, lang)}
                 </td>
                 <td className="ent-summary-table__score">{section.score}</td>
                 {index === 0 && (
@@ -139,9 +137,7 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
           <details key={section.testId} className="ent-detail" open>
             <summary className="ent-detail__toggle">
               <span className="material-symbols-outlined">expand_more</span>
-              {lang === "kz"
-                ? section.titleKz || translateSubject(section.subject, lang)
-                : section.title || translateSubject(section.subject, lang)}
+              {translateSubject(section.subject, lang)}
             </summary>
             <div className="ent-detail__meta">
               <div>
