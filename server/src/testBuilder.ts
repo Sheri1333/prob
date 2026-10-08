@@ -137,8 +137,9 @@ function tableLines(table: BLine[][][]): BLine[] {
 
 const QUESTION_LINE = /^\s*(\d{1,3})\s*[.)]\s*/;
 const OPTION_START = new RegExp(`^\\s*([${LETTER_CLASS}])\\s*(?:\\)|\\.(?=\\s))\\s*`);
+// No \b here: in JS it only knows Latin letters, so "Жауаптары" never matched.
 const KEY_HEADING =
-  /^\s*(жауап(тар)?\s*(кілт|кесте)|жауаптар\b|жауап\s*кілттері|дұрыс\s*жауаптар|кілттер\b|ответы\b|ключи\b|ключ\s*ответ)/i;
+  /^\s*(жауап(тар|тары)?(\s*(кілт|кесте)\S*)?|жауап\s*кілттері|дұрыс\s*жауаптар\S*|кілттер|ответы|ключи|ключ\s*ответ\S*)(?![а-яәіңғүұқөһё])/i;
 const MATCHING_HINT = /сәйкест|соответств/i;
 const MULTI_HINT = /\(\s*-\s*(дар|дер|тар|тер|лар|лер|лары|лері|дары|дері|тары|тері)\s*\)|бір немесе бірнеше|один или несколько/i;
 const VARIANT_LINE = /нұсқа|вариант/i;
@@ -287,6 +288,15 @@ function parsePairs(spec: string): Map<number, number[]> {
       .map((o) => (/^\d$/.test(o) ? Number(o) - 1 : letterIndex(o)))
       .filter((i) => i >= 0);
     if (row >= 0 && opts.length) pairs.set(row, opts);
+  }
+  if (pairs.size === 0) {
+    // Compact form without dashes: "A2 B1", "A1,3 B2".
+    const compact = new RegExp(`(?<![\\w])([${LETTER_CLASS}])\\s*([1-9](?:\\s*,\\s*[1-9])*)`, "g");
+    while ((m = compact.exec(spec))) {
+      const row = letterIndex(m[1]);
+      const opts = m[2].split(/\s*,\s*/).map((o) => Number(o) - 1);
+      if (row >= 0) pairs.set(row, opts);
+    }
   }
   return pairs;
 }
@@ -449,6 +459,47 @@ function contextFrom(lines: BLine[], images: string[], pdf: boolean): ContextBlo
   return { text: text.trim(), images: pics };
 }
 
+const INLINE_OPTION = new RegExp(`(?<=^|\\s)([${LETTER_CLASS}])\\s*\\)`, "g");
+
+/**
+ * Tests converted from PDF keep several options on one line:
+ * "2. Қыздырғанда … А) Ca(NO3)2" / "В) Cu(NO3)2 С) AgNO3". Split such lines at
+ * option markers that continue the A, B, C… sequence.
+ */
+function explodeInlineOptions(lines: BLine[]): BLine[] {
+  const out: BLine[] = [];
+  let expected = 0;
+  for (const line of lines) {
+    if (line.table) {
+      out.push(line);
+      continue;
+    }
+    const cuts: number[] = [];
+    INLINE_OPTION.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = INLINE_OPTION.exec(line.text))) {
+      if (letterIndex(m[1]) !== expected) continue;
+      expected += 1;
+      if (m.index > 0) cuts.push(m.index);
+    }
+    if (cuts.length === 0) {
+      out.push(line);
+      continue;
+    }
+    const bounds = [0, ...cuts, line.text.length];
+    for (let i = 0; i < bounds.length - 1; i++) {
+      const text = line.text.slice(bounds[i], bounds[i + 1]);
+      if (!text.trim()) continue;
+      out.push({
+        text: text.trimEnd(),
+        mask: line.mask.slice(bounds[i], bounds[i] + text.trimEnd().length),
+        images: i === 0 ? line.images : [],
+      });
+    }
+  }
+  return out;
+}
+
 interface ChunkResult {
   question: ParsedQuestion;
   tail: BLine[];
@@ -466,6 +517,7 @@ function parseChunk(chunk: Chunk, pdf: boolean): ChunkResult | null {
     floating.push(...l.images.filter((img) => img.floating).map((img) => img.src));
     return keep.length === l.images.length ? l : { ...l, images: keep };
   });
+  lines = explodeInlineOptions(lines);
 
   // When options are written "A)", lines like "А. 1582-1598 жж." belong to the
   // question text; "A." options are used only when no "A)" ones exist.
@@ -485,10 +537,19 @@ function parseChunk(chunk: Chunk, pdf: boolean): ChunkResult | null {
   const comboOptions = lines.filter(
     (l) => optionStart(l) && /\b(?:I{1,3}|IV|V|\d)\s*[-–]\s*[A-DА-Д]\b/.test(l.text),
   ).length;
+  // A table holding both row markers and option markers is a matching task
+  // even when the wording has no "сәйкестендір" (and no options outside it).
+  const tableMatching = lines.some((l) => {
+    if (!l.table) return false;
+    const text = tableLines(l.table).map((x) => x.text).join("\n");
+    const rows = text.match(new RegExp(`(?<=^|\\s)(?:[${LETTER_CLASS}]\\s*\\)|(?:I|І){1,3}\\s*[.)])`, "g"))?.length ?? 0;
+    const nums = text.match(/(?<=^|\s)\d\s*[.)]/g)?.length ?? 0;
+    return rows >= 2 && (nums >= 2 || /(^|\s)(I|І)\s*[.)]/.test(text));
+  });
+  const optionsOutsideTables = lines.filter((l, i) => i > 0 && !l.table && optionStart(l)).length;
   const matchingLike =
     comboOptions < 2 &&
-    (MATCHING_HINT.test(promptPreview) ||
-      lines.some((l) => l.table && optionLikeCount(tableLines(l.table)) >= 2 && /(^|\s)(I|І)\s*[.)]/.test(tableLines(l.table).map((x) => x.text).join("\n"))));
+    (MATCHING_HINT.test(promptPreview) || (tableMatching && optionsOutsideTables < 2));
 
   if (matchingLike) {
     const flat = lines.slice(1).flatMap((l) => (l.table ? tableLines(l.table) : [l]));
@@ -528,8 +589,12 @@ function parseChunk(chunk: Chunk, pdf: boolean): ChunkResult | null {
   for (let i = firstOption; i < lines.length; i++) {
     const l = lines[i];
     const o = optionAt(l);
-    if (o && o.index === options.length) {
-      options.push({ id: LETTERS[o.index], label: l.text.slice(o.end), line: l, start: o.end });
+    // Typo in the source: "А) В) С) В)" — a repeated earlier letter after three
+    // options is the missing next one (D).
+    const typo = o && options.length >= 3 && o.index < options.length - 1;
+    if (o && (o.index === options.length || typo)) {
+      const id = LETTERS[options.length];
+      options.push({ id, label: l.text.slice(o.end), line: l, start: o.end });
       optionLineIdx.push(i);
     }
   }
@@ -619,7 +684,10 @@ function applyKeyList(questions: ParsedQuestion[], keyLines: BLine[]): number {
       }
       continue;
     }
-    const lm = new RegExp(`^\\s*([${LETTER_CLASS}])(?:\\s*[,;]\\s*([${LETTER_CLASS}]))*\\s*(?:[.)]|$)`).exec(head);
+    // "A", "A, D", or letters written together: "ABE".
+    const lm =
+      new RegExp(`^\\s*([${LETTER_CLASS}])(?:\\s*[,;]\\s*([${LETTER_CLASS}]))*\\s*(?:[.)]|$)`).exec(head) ??
+      new RegExp(`^\\s*[${LETTER_CLASS}]{2,6}\\s*$`).exec(head);
     if (!lm) continue;
     const letters = head
       .slice(0, lm[0].length)
