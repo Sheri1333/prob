@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="/var/www/talapker"
 REPO="https://github.com/Sheri1333/prob.git"
-PUBLIC_ORIGIN="http://195.49.212.31"
+PUBLIC_ORIGIN="https://talapkergo.kz"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Run as root: sudo bash deploy/setup-vps.sh"
