@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /exam
+Disallow: /profile
+
+Sitemap: https://talapkergo.kz/sitemap.xml
