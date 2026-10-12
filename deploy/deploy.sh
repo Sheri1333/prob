@@ -24,8 +24,8 @@ sudo systemctl reload nginx
 
 echo "==> health"
 for i in $(seq 1 15); do
-  if curl -fsS http://127.0.0.1/api/health >/dev/null; then
-    curl -fsS http://127.0.0.1/api/health
+  if curl -fsS http://127.0.0.1:3001/api/health >/dev/null; then
+    curl -fsS http://127.0.0.1:3001/api/health
     echo
     echo "==> done"
     exit 0
