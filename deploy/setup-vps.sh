@@ -94,8 +94,12 @@ $APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart talapker-api, /usr/bin
 EOF
 chmod 440 /etc/sudoers.d/talapker
 
-cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/talapker
-ln -sfn /etc/nginx/sites-available/talapker /etc/nginx/sites-enabled/talapker
+if [ -f /etc/letsencrypt/live/talapkergo.kz/fullchain.pem ]; then
+  cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/talapker
+  ln -sfn /etc/nginx/sites-available/talapker /etc/nginx/sites-enabled/talapker
+else
+  echo "==> no TLS certificate yet: run certbot for talapkergo.kz, then install deploy/nginx.conf"
+fi
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl enable --now nginx

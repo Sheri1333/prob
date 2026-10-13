@@ -74,6 +74,10 @@ app.use("/api/exams", examsRouter);
 app.use("/api/files", filesRouter);
 app.use("/api/admin", adminRouter);
 
+app.use("/api", (_req, res) => {
+  res.status(404).json({ error: "Не найдено" });
+});
+
 app.use(
   (
     err: Error & { status?: number; statusCode?: number; type?: string },

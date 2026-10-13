@@ -4,6 +4,18 @@
   box-sizing: border-box;
 }
 
+/* Ligature icons: keep the fallback word hidden and 1em wide until the font loads. */
+.material-symbols-outlined {
+  display: inline-block;
+  width: 1em;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+html:not(.icons-ready) .material-symbols-outlined {
+  visibility: hidden;
+}
+
 html {
   background: #f4f5fb;
   -webkit-text-size-adjust: 100%;
@@ -724,6 +736,11 @@ select {
   box-shadow: var(--shadow-sm);
   min-width: 0;
   overflow: hidden;
+}
+
+.not-found__cta {
+  margin-top: 1.25rem;
+  text-decoration: none;
 }
 
 .legal-page h1 {

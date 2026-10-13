@@ -16,9 +16,25 @@ import { rateLimit } from "../rateLimit.js";
 export const authRouter = Router();
 
 const TOO_MANY = "Слишком много попыток. Попробуйте через несколько минут";
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: TOO_MANY });
-const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: TOO_MANY });
-const mailLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: TOO_MANY });
+// A whole class often shares one school IP, so per-IP limits are generous;
+// brute force and mail spam are limited per email address instead.
+const emailKey = (req: { body?: { email?: unknown } }) =>
+  `email:${str(req.body?.email).trim().toLowerCase()}`;
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, message: TOO_MANY });
+const loginEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: TOO_MANY,
+  key: emailKey,
+});
+const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 100, message: TOO_MANY });
+const mailLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 50, message: TOO_MANY });
+const mailEmailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: TOO_MANY,
+  key: emailKey,
+});
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function str(value: unknown): string {
@@ -122,7 +138,7 @@ authRouter.post("/register", registerLimiter, async (req, res) => {
   respondUser(res, user, 201);
 });
 
-authRouter.post("/login", loginLimiter, async (req, res) => {
+authRouter.post("/login", loginLimiter, loginEmailLimiter, async (req, res) => {
   const email = str(req.body?.email);
   const password = str(req.body?.password);
   if (!email || !password) {
@@ -207,7 +223,7 @@ authRouter.post("/resend-verify", mailLimiter, authRequired, async (req: AuthedR
   res.json({ ok: true });
 });
 
-authRouter.post("/forgot-password", mailLimiter, async (req, res) => {
+authRouter.post("/forgot-password", mailLimiter, mailEmailLimiter, async (req, res) => {
   const email =
     typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   if (!email) {

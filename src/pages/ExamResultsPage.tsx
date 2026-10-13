@@ -7,12 +7,14 @@ import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import { isSubmittedExam, type ExamSubmitResponse } from "../utils/examDraft";
 import { entScoreToGrade } from "../utils/testUtils";
+import { useDocumentTitle } from "../utils/useDocumentTitle";
 
 interface ExamResultsPageProps {
   lang: Lang;
 }
 
 export function ExamResultsPage({ lang }: ExamResultsPageProps) {
+  useDocumentTitle(lang === "kz" ? "ҰБТ нәтижесі" : "Результаты ЕНТ");
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();

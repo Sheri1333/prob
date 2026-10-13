@@ -14,6 +14,7 @@ import {
   nextQuestionId,
   applyAnswerKeys,
 } from "../utils/answerKey";
+import { useDocumentTitle } from "../utils/useDocumentTitle";
 
 type Tab = "dashboard" | "tests" | "editor" | "pricing" | "email" | "users";
 const TABS: Tab[] = ["dashboard", "tests", "editor", "pricing", "email", "users"];
@@ -37,6 +38,7 @@ const EMPTY_META = {
 };
 
 export function AdminPage() {
+  useDocumentTitle("Админка");
   const { user, loading, isAdmin, logout } = useAuth();
   const { toasts, push: toast, dismiss: dismissToast } = useToasts();
   // The screen lives in the URL (?tab=…&test=…&user=…): each screen is a

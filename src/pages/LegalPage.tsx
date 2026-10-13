@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ThemeToggle } from "../components/ThemeToggle";
 import type { Lang } from "../i18n/strings";
+import { useDocumentTitle } from "../utils/useDocumentTitle";
 
 const COPY = {
   faq: {
@@ -37,6 +38,7 @@ export function LegalPage({ lang, kind }: LegalPageProps) {
   const copy = COPY[kind];
   const title = lang === "kz" ? copy.titleKz : copy.titleRu;
   const body = lang === "kz" ? copy.bodyKz : copy.bodyRu;
+  useDocumentTitle(title);
 
   return (
     <div className="page">

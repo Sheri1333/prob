@@ -3,8 +3,10 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { useDocumentTitle } from "../utils/useDocumentTitle";
 
 export function ForgotPasswordPage() {
+  useDocumentTitle("Сброс пароля");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
@@ -60,6 +62,7 @@ export function ForgotPasswordPage() {
 }
 
 export function ResetPasswordPage() {
+  useDocumentTitle("Новый пароль");
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const token = params.get("token") ?? "";
@@ -117,6 +120,7 @@ export function ResetPasswordPage() {
 }
 
 export function VerifyEmailPage() {
+  useDocumentTitle("Подтверждение email");
   const [params] = useSearchParams();
   const { applyAuth } = useAuth();
   const token = params.get("token") ?? "";

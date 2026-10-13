@@ -12,6 +12,7 @@ import { translateSubject } from "../i18n/subjects";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import { loadExamDraft } from "../utils/examDraft";
+import { useDocumentTitle } from "../utils/useDocumentTitle";
 
 interface CatalogPageProps {
   lang: Lang;
@@ -97,6 +98,7 @@ function setupScrollReveal(root: HTMLElement): () => void {
 }
 
 export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
+  useDocumentTitle();
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const pageRef = useRef<HTMLDivElement>(null);
@@ -104,11 +106,13 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
   const [blueprint, setBlueprint] = useState<Awaited<
     ReturnType<typeof api.getExamBlueprint>
   > | null>(null);
-  const [pricing, setPricing] = useState<EntPricing>({
+  // Null until /pricing answers, so stale hard-coded prices never flash.
+  const [pricingData, setPricing] = useState<EntPricing | null>(null);
+  const pricing = pricingData ?? {
     trialEnabled: true,
-    singlePriceTenge: 500,
-    bundlePriceTenge: 1250,
-  });
+    singlePriceTenge: 0,
+    bundlePriceTenge: 0,
+  };
   const [comboModalOpen, setComboModalOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(
@@ -206,7 +210,8 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
     0,
     pricing.singlePriceTenge * 3 - pricing.bundlePriceTenge,
   );
-  const formatTenge = (n: number) => `${n.toLocaleString("ru-RU")} ₸`;
+  const formatTenge = (n: number) =>
+    pricingData ? `${n.toLocaleString("ru-RU")} ₸` : "— ₸";
 
   return (
     <div className="page" ref={pageRef}>
@@ -263,8 +268,8 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
                 ? `Сәлем, ${user.name.split(/\s+/)[0]}!`
                 : `Привет, ${user.name.split(/\s+/)[0]}!`
               : lang === "kz"
-                ? "Сәлем!"
-                : "Привет!"}
+                ? "ҰБТ-ға онлайн дайындық"
+                : "Онлайн-подготовка к ЕНТ"}
           </h1>
           <p>
             {lang === "kz"

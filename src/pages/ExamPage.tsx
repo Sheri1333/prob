@@ -28,6 +28,7 @@ import {
   type ExamSectionMeta,
   type ExamSessionResponse,
 } from "../utils/examDraft";
+import { useDocumentTitle } from "../utils/useDocumentTitle";
 
 interface ExamPageProps {
   lang: Lang;
@@ -42,6 +43,7 @@ function isAnswered(value: AnswerValue | undefined): boolean {
 }
 
 export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
+  useDocumentTitle(lang === "kz" ? "ҰБТ тапсыру" : "Прохождение ЕНТ");
   const navigate = useNavigate();
   const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const [searchParams] = useSearchParams();

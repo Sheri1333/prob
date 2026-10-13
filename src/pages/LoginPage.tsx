@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { useDocumentTitle } from "../utils/useDocumentTitle";
 
 interface AuthLocationState {
   from?: string;
@@ -9,6 +10,7 @@ interface AuthLocationState {
 }
 
 export function LoginPage() {
+  useDocumentTitle("Вход");
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -90,6 +92,7 @@ export function LoginPage() {
 }
 
 export function RegisterPage() {
+  useDocumentTitle("Регистрация");
   const { register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

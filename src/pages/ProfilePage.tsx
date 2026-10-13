@@ -7,6 +7,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { t } from "../i18n/strings";
 import type { Lang } from "../i18n/strings";
 import { entScoreToGrade } from "../utils/testUtils";
+import { useDocumentTitle } from "../utils/useDocumentTitle";
 
 interface ProfilePageProps {
   lang: Lang;
@@ -19,6 +20,7 @@ function initials(name: string): string {
 }
 
 export function ProfilePage({ lang }: ProfilePageProps) {
+  useDocumentTitle("Профиль");
   const { user, loading, isAdmin, logout } = useAuth();
   const [sessions, setSessions] = useState<
     Awaited<ReturnType<typeof api.examHistory>>["sessions"]

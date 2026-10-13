@@ -15,8 +15,7 @@ import {
 } from "./pages/EmailAuthPages";
 import { LegalPage } from "./pages/LegalPage";
 import { ProfilePage } from "./pages/ProfilePage";
-import { ResultsPage } from "./pages/ResultsPage";
-import { TestPage } from "./pages/TestPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 import "./styles/global.css";
 
 const LANG_KEY = "prob_lang";
@@ -79,14 +78,7 @@ export function App() {
               path="/exam"
               element={<ExamPage lang={lang} onToggleLang={toggleLang} />}
             />
-            <Route
-              path="/test/:testId"
-              element={<TestPage lang={lang} onToggleLang={toggleLang} />}
-            />
-            <Route
-              path="/test/:testId/results"
-              element={<ResultsPage lang={lang} />}
-            />
+            <Route path="*" element={<NotFoundPage lang={lang} />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>
