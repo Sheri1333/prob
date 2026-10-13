@@ -50,6 +50,8 @@ export function AdminPage() {
   const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : "dashboard";
   const testParam = searchParams.get("test");
   const userParam = searchParams.get("user");
+  // Tests tab: subject cards first, a subject's list once one is picked.
+  const testSubject = searchParams.get("subject") ?? "";
   const go = useCallback(
     (next: Tab, extra: Record<string, string> = {}, replace = false) => {
       const target = new URLSearchParams({ tab: next, ...extra });
@@ -90,7 +92,6 @@ export function AdminPage() {
   });
   const [savingPricing, setSavingPricing] = useState(false);
   const [testQuery, setTestQuery] = useState("");
-  const [testSubject, setTestSubject] = useState("");
   const [testQuestions, setTestQuestions] = useState("");
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [previewTestId, setPreviewTestId] = useState<string | null>(null);
@@ -185,19 +186,34 @@ export function AdminPage() {
   );
   const editing = draftQuestions.length > 0;
 
-  const testSubjects = useMemo(
-    () => [...new Set(tests.map((t) => t.subject).filter(Boolean))].sort(),
-    [tests],
+  const subjectCards = useMemo(() => {
+    const bySubject = new Map<string, { subject: string; tests: number; questions: number }>();
+    for (const t of tests) {
+      const subject = t.subject || "Без предмета";
+      const card = bySubject.get(subject) ?? { subject, tests: 0, questions: 0 };
+      card.tests += 1;
+      card.questions += t.questionCount;
+      bySubject.set(subject, card);
+    }
+    return [...bySubject.values()].sort((a, b) => a.subject.localeCompare(b.subject, "ru"));
+  }, [tests]);
+  const subjectTests = useMemo(
+    () => tests.filter((t) => (t.subject || "Без предмета") === testSubject),
+    [tests, testSubject],
   );
   const testQuestionCounts = useMemo(
     () =>
-      [...new Set(tests.map((t) => t.questionCount))].sort((a, b) => a - b),
-    [tests],
+      [...new Set(subjectTests.map((t) => t.questionCount))].sort((a, b) => a - b),
+    [subjectTests],
   );
+  const openSubject = (subject: string) => {
+    setTestQuery("");
+    setTestQuestions("");
+    go("tests", subject ? { subject } : {});
+  };
   const filteredTests = useMemo(() => {
     const q = testQuery.trim().toLowerCase();
-    return tests.filter((t) => {
-      if (testSubject && t.subject !== testSubject) return false;
+    return subjectTests.filter((t) => {
       if (testQuestions && String(t.questionCount) !== testQuestions) {
         return false;
       }
@@ -213,7 +229,7 @@ export function AdminPage() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [tests, testQuery, testSubject, testQuestions]);
+  }, [subjectTests, testQuery, testQuestions]);
 
   useEffect(() => {
     if (!isAdmin || tab !== "editor" || !testParam) return;
@@ -809,11 +825,18 @@ export function AdminPage() {
           <section>
             <div className="admin-page-head">
               <div>
-                <h1>Тесты</h1>
+                <h1>{testSubject || "Тесты"}</h1>
                 <p>
-                  {filteredTests.length} из {tests.length} в каталоге
+                  {testSubject
+                    ? `${filteredTests.length} из ${subjectTests.length} тестов`
+                    : `${subjectCards.length} предметов · ${tests.length} тестов`}
                 </p>
               </div>
+              {testSubject && (
+                <button type="button" className="admin-btn" onClick={() => openSubject("")}>
+                  ← Все предметы
+                </button>
+              )}
             </div>
             {pool && (pool.missingMandatory.length > 0 || pool.missingProfile.length > 0) && (
               <p className="admin-alert admin-alert--error">
@@ -828,25 +851,34 @@ export function AdminPage() {
               <div className="admin-empty">
                 Пока нет тестов.
               </div>
+            ) : !testSubject ? (
+              <div className="admin-subjects">
+                {subjectCards.map((s) => (
+                  <button
+                    key={s.subject}
+                    type="button"
+                    className="admin-subject-card"
+                    onClick={() => openSubject(s.subject)}
+                  >
+                    <span className="admin-subject-card__badge">{s.subject.slice(0, 1)}</span>
+                    <strong>{s.subject}</strong>
+                    <span className="admin-subject-card__meta">
+                      {s.tests} {plural(s.tests, "тест", "теста", "тестов")} · {s.questions}{" "}
+                      {plural(s.questions, "вопрос", "вопроса", "вопросов")}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : subjectTests.length === 0 ? (
+              <div className="admin-empty">В этом предмете нет тестов.</div>
             ) : (
               <>
                 <div className="admin-filters">
                   <input
                     value={testQuery}
-                    placeholder="Поиск по названию, предмету, вопросам"
+                    placeholder="Поиск по названию"
                     onChange={(e) => setTestQuery(e.target.value)}
                   />
-                  <select
-                    value={testSubject}
-                    onChange={(e) => setTestSubject(e.target.value)}
-                  >
-                    <option value="">Все предметы</option>
-                    {testSubjects.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
                   <select
                     value={testQuestions}
                     onChange={(e) => setTestQuestions(e.target.value)}
@@ -867,7 +899,6 @@ export function AdminPage() {
                       <thead>
                         <tr>
                           <th>Название</th>
-                          <th>Предмет</th>
                           <th>Вопросов</th>
                           <th>Действия</th>
                         </tr>
@@ -878,7 +909,6 @@ export function AdminPage() {
                             <td>
                               <strong>{t.titleKz || t.title}</strong>
                             </td>
-                            <td>{t.subject}</td>
                             <td>{t.questionCount}</td>
                             <td>
                               <div className="admin-table__actions">
@@ -1045,9 +1075,8 @@ export function AdminPage() {
                   </label>
                   <label>
                     Предмет
-                    <input
+                    <select
                       value={previewMeta.subject}
-                      placeholder="География"
                       onChange={(e) =>
                         setPreviewMeta((m) => ({
                           ...m,
@@ -1055,7 +1084,28 @@ export function AdminPage() {
                           section: e.target.value,
                         }))
                       }
-                    />
+                    >
+                      <option value="" disabled>
+                        Выберите предмет
+                      </option>
+                      {previewMeta.subject && !ENT_SUBJECTS.includes(previewMeta.subject) && (
+                        <option value={previewMeta.subject}>{previewMeta.subject} (текущий)</option>
+                      )}
+                      <optgroup label="Обязательные">
+                        {ENT_SUBJECTS.slice(0, 3).map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Профильные">
+                        {ENT_SUBJECTS.slice(3).map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
                   </label>
                   <label>
                     Минут
@@ -1497,6 +1547,38 @@ export function AdminPage() {
       </main>
     </div>
   );
+}
+
+// Names the server's ENT pool recognises (server/src/ent.ts); the first three
+// are the mandatory blocks.
+const ENT_SUBJECTS = [
+  "Қазақстан тарихы",
+  "Оқу сауаттылығы",
+  "Математикалық сауаттылық",
+  "Математика",
+  "Физика",
+  "Химия",
+  "Биология",
+  "География",
+  "Информатика",
+  "Дүниежүзі тарихы",
+  "Құқық негіздері",
+  "Қазақ тілі",
+  "Қазақ әдебиеті",
+  "Орыс тілі",
+  "Орыс әдебиеті",
+  "Ағылшын тілі",
+  "Неміс тілі",
+  "Француз тілі",
+  "Шығармашылық емтихан",
+];
+
+function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
 }
 
 const MANDATORY_SUBJECTS = new Set([
