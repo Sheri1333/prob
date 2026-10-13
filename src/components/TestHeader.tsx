@@ -22,6 +22,8 @@ interface TestHeaderProps {
   onSwitchSection?: (index: number) => void;
   answeredIds?: Set<number>;
   onJump?: (index: number) => void;
+  onFinish?: () => void;
+  finishing?: boolean;
 }
 
 function formatTimer(totalSeconds: number): string {
@@ -43,6 +45,8 @@ export function TestHeader({
   onSwitchSection,
   answeredIds,
   onJump,
+  onFinish,
+  finishing,
 }: TestHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -78,39 +82,56 @@ export function TestHeader({
   return (
     <header className="exam-header">
       <div className="exam-header__row">
-        <div className="exam-header__subject" ref={menuRef}>
-          <button
-            type="button"
-            className={`exam-header__title ${hasMenu ? "exam-header__title--menu" : ""}`}
-            onClick={() => hasMenu && setMenuOpen((v) => !v)}
-          >
-            {section}
-            {hasMenu && (
-              <span className="material-symbols-outlined" aria-hidden>
-                {menuOpen ? "expand_less" : "expand_more"}
-              </span>
+        <div className="exam-header__left">
+          <div className="exam-header__subject" ref={menuRef}>
+            <button
+              type="button"
+              className={`exam-header__title ${hasMenu ? "exam-header__title--menu" : ""}`}
+              onClick={() => hasMenu && setMenuOpen((v) => !v)}
+            >
+              {section}
+              {hasMenu && (
+                <span className="material-symbols-outlined" aria-hidden>
+                  {menuOpen ? "expand_less" : "expand_more"}
+                </span>
+              )}
+            </button>
+            {hasMenu && menuOpen && (
+              <div className="exam-header__menu" role="menu">
+                {sections!.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    role="menuitem"
+                    className={`exam-header__menu-item ${s.current ? "active" : ""}`}
+                    onClick={() => {
+                      onSwitchSection!(i);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <span>{s.subject}</span>
+                    <span className="exam-header__menu-progress">
+                      {s.answered}/{s.total}
+                    </span>
+                  </button>
+                ))}
+              </div>
             )}
-          </button>
-          {hasMenu && menuOpen && (
-            <div className="exam-header__menu" role="menu">
-              {sections!.map((s, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  role="menuitem"
-                  className={`exam-header__menu-item ${s.current ? "active" : ""}`}
-                  onClick={() => {
-                    onSwitchSection!(i);
-                    setMenuOpen(false);
-                  }}
-                >
-                  <span>{s.subject}</span>
-                  <span className="exam-header__menu-progress">
-                    {s.answered}/{s.total}
-                  </span>
-                </button>
-              ))}
-            </div>
+          </div>
+          {onFinish && (
+            <button
+              type="button"
+              className="exam-header__finish"
+              onClick={onFinish}
+              disabled={finishing}
+              aria-label={t("finishTest", lang)}
+              title={t("finishTest", lang)}
+            >
+              <span className="material-symbols-outlined" aria-hidden>
+                check
+              </span>
+              <span className="exam-header__finish-label">{t("finishTest", lang)}</span>
+            </button>
           )}
         </div>
         <div className="exam-header__actions">

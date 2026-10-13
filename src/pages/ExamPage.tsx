@@ -414,6 +414,8 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
         }
         answeredIds={answeredIndexes}
         onJump={goTo}
+        onFinish={handleFinish}
+        finishing={finishing}
       />
 
       <main
