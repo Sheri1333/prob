@@ -15,6 +15,7 @@ import {
   applyAnswerKeys,
 } from "../utils/answerKey";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
+import { TestPreview } from "../components/admin/TestPreview";
 
 type Tab = "dashboard" | "tests" | "editor" | "pricing" | "email" | "users";
 const TABS: Tab[] = ["dashboard", "tests", "editor", "pricing", "email", "users"];
@@ -92,6 +93,7 @@ export function AdminPage() {
   const [testSubject, setTestSubject] = useState("");
   const [testQuestions, setTestQuestions] = useState("");
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [previewTestId, setPreviewTestId] = useState<string | null>(null);
   const [pool, setPool] = useState<Awaited<
     ReturnType<typeof api.adminPool>
   > | null>(null);
@@ -149,6 +151,33 @@ export function AdminPage() {
   useEffect(() => {
     if (isAdmin) void load();
   }, [isAdmin, load]);
+
+  // A full ENT is one attempt per section sharing a sessionId.
+  const userExams = useMemo(() => {
+    const groups = new Map<
+      string,
+      { key: string; sessionId: string | null; score: number; maxScore: number; finishedAt: string; subjects: string[] }
+    >();
+    for (const a of attempts) {
+      const key = a.sessionId ?? a.id;
+      const g = groups.get(key) ?? {
+        key,
+        sessionId: a.sessionId,
+        score: 0,
+        maxScore: 0,
+        finishedAt: a.finishedAt,
+        subjects: [],
+      };
+      g.score += a.score;
+      g.maxScore += a.maxScore;
+      if (a.finishedAt > g.finishedAt) g.finishedAt = a.finishedAt;
+      if (a.subject && !MANDATORY_SUBJECTS.has(a.subject.trim().toLowerCase())) {
+        g.subjects.push(a.subject);
+      }
+      groups.set(key, g);
+    }
+    return [...groups.values()].sort((x, y) => (x.finishedAt < y.finishedAt ? 1 : -1));
+  }, [attempts]);
 
   const keyProgress = useMemo(
     () => keyedCount(draftQuestions),
@@ -543,6 +572,10 @@ export function AdminPage() {
   return (
     <div className="admin-page">
       <ToastHost toasts={toasts} onDismiss={dismissToast} />
+      {previewTestId && (
+        <TestPreview testId={previewTestId} onClose={() => setPreviewTestId(null)} />
+      )}
+
       {keysModal && (
         <div className="admin-modal-overlay" role="presentation">
           <div className="admin-modal" role="dialog">
@@ -754,8 +787,9 @@ export function AdminPage() {
                             name: u.name,
                             role: u.role,
                             createdAt: u.created_at,
-                            attemptsCount: 0,
-                            avgPercent: null,
+                            examsCount: 0,
+                            avgScore: null,
+                            avgMaxScore: null,
                           });
                         }}
                       >
@@ -850,6 +884,12 @@ export function AdminPage() {
                               <div className="admin-table__actions">
                                 <button
                                   type="button"
+                                  onClick={() => setPreviewTestId(t.id)}
+                                >
+                                  Просмотр
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => void loadTestForEdit(t.id)}
                                 >
                                   Редактировать
@@ -899,11 +939,6 @@ export function AdminPage() {
             <div className="admin-page-head">
               <div>
                 <h1>{editing ? "Редактор теста" : "Новый тест"}</h1>
-                <p>
-                  {editing
-                    ? "Проверьте карточку, вопросы и ключи ответов"
-                    : "Создайте вручную или разберите PDF пробника"}
-                </p>
               </div>
               {editing && (
                 <button
@@ -920,10 +955,6 @@ export function AdminPage() {
               <div className="admin-create-grid">
                 <article className="admin-create-card">
                   <h2>Вручную</h2>
-                  <p>
-                    Название, предмет, вопросы и правильные ответы — всё в форме,
-                    без JSON.
-                  </p>
                   <button
                     type="button"
                     className="admin-btn admin-btn--primary"
@@ -934,12 +965,7 @@ export function AdminPage() {
                 </article>
                 <article className="admin-create-card">
                   <h2>Из PDF или Word</h2>
-                  <p>
-                    Парсер вытащит вопросы, тексты, таблицы и картинки. Ключи:
-                    жирный шрифт, маркер или цвет у ответа, строки «Жауабы: I – C»
-                    или таблица/список ответов в конце файла. Если в файле
-                    несколько вариантов — каждый станет отдельным тестом.
-                  </p>
+                  <p>Ключи берутся из выделенных ответов или таблицы ответов.</p>
                   <label className="admin-btn admin-btn--primary">
                     {parsing ? "Разбор файла..." : "Выбрать PDF или .docx"}
                     <input
@@ -1387,35 +1413,32 @@ export function AdminPage() {
                     К пользователям
                   </button>
                 </div>
-                {attempts.length === 0 ? (
+                {userExams.length === 0 ? (
                   <div className="admin-empty">У этого пользователя ещё нет результатов.</div>
                 ) : (
                   <div className="admin-panel">
                     <table className="admin-table">
                       <thead>
                         <tr>
-                          <th>Тест</th>
-                          <th>Предмет</th>
-                          <th>Балл</th>
-                          <th>%</th>
                           <th>Завершено</th>
+                          <th>Профильные предметы</th>
+                          <th>Балл ЕНТ</th>
+                          <th />
                         </tr>
                       </thead>
                       <tbody>
-                        {attempts.map((a) => (
-                          <tr key={a.id}>
-                            <td>{a.testTitle}</td>
-                            <td>{a.subject || "—"}</td>
+                        {userExams.map((e) => (
+                          <tr key={e.key}>
+                            <td>{formatDate(e.finishedAt)}</td>
+                            <td>{e.subjects.join(" · ") || "—"}</td>
                             <td>
-                              {a.score}/{a.maxScore}
+                              <strong>{e.score}</strong> / {e.maxScore}
                             </td>
                             <td>
-                              {a.maxScore
-                                ? Math.round((100 * a.score) / a.maxScore)
-                                : 0}
-                              %
+                              {e.sessionId && (
+                                <Link to={`/exam/results/${e.sessionId}`}>Разбор</Link>
+                              )}
                             </td>
-                            <td>{formatDate(a.finishedAt)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1436,8 +1459,8 @@ export function AdminPage() {
                         <th>Email</th>
                         <th>Роль</th>
                         <th>Регистрация</th>
-                        <th>Попыток</th>
-                        <th>Средний %</th>
+                        <th>ЕНТ сдано</th>
+                        <th>Средний балл</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1455,9 +1478,9 @@ export function AdminPage() {
                             </span>
                           </td>
                           <td>{formatDate(u.createdAt)}</td>
-                          <td>{u.attemptsCount}</td>
+                          <td>{u.examsCount}</td>
                           <td>
-                            {u.avgPercent != null ? `${u.avgPercent}%` : "—"}
+                            {u.avgScore != null ? `${u.avgScore} / ${u.avgMaxScore}` : "—"}
                           </td>
                         </tr>
                       ))}
@@ -1472,6 +1495,15 @@ export function AdminPage() {
     </div>
   );
 }
+
+const MANDATORY_SUBJECTS = new Set([
+  "қазақстан тарихы",
+  "оқу сауаттылығы",
+  "математикалық сауаттылық",
+  "история казахстана",
+  "грамотность чтения",
+  "математическая грамотность",
+]);
 
 function formatDate(iso: string): string {
   try {

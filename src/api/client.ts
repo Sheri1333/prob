@@ -313,8 +313,9 @@ export const api = {
         name: string;
         role: string;
         createdAt: string;
-        attemptsCount: number;
-        avgPercent: number | null;
+        examsCount: number;
+        avgScore: number | null;
+        avgMaxScore: number | null;
       }>;
     }>("/admin/users");
   },
@@ -328,6 +329,7 @@ export const api = {
       attempts: Array<{
         id: string;
         userId: string;
+        sessionId: string | null;
         testId: string;
         score: number;
         maxScore: number;

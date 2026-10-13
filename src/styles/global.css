@@ -3846,9 +3846,11 @@ label.admin-btn--primary:hover {
   transform: rotate(180deg);
 }
 
+/* Side space is margin, not padding: cells scrolled under padding would
+   still show to the left of the sticky row headers. */
 .ent-detail__scroll {
   overflow-x: auto;
-  padding: 0 1rem 1rem;
+  margin: 0 1rem 1rem;
 }
 
 .ent-grid-table {
@@ -3873,6 +3875,7 @@ label.admin-btn--primary:hover {
   position: sticky;
   left: 0;
   z-index: 1;
+  box-shadow: 1px 0 0 var(--border-soft), 4px 0 8px -4px rgba(0, 0, 0, 0.15);
 }
 
 .ent-grid-table__ok {
@@ -4944,4 +4947,214 @@ label.admin-btn--primary:hover {
   max-height: none;
   height: auto;
   background: #fff;
+}
+
+/* Admin: read-only test preview, rendered with the exam styles. */
+.test-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.test-preview__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  background: var(--exam-glass-strong);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--exam-outline);
+}
+
+.test-preview__title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.test-preview__title strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.test-preview__title span {
+  font-size: 0.8rem;
+  color: var(--exam-on-variant);
+}
+
+.test-preview__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.test-preview__dots {
+  padding: 0.75rem 1.25rem 0;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.test-preview__body {
+  flex: 1;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 2rem;
+}
+
+.test-preview__key {
+  max-width: 56rem;
+  margin: 1rem auto 0;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--success-bg);
+  color: var(--success);
+  font-weight: 700;
+}
+
+.test-preview__key.is-missing {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.test-preview__foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--exam-glass-strong);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--exam-outline);
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .test-preview__head {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .test-preview__title {
+    flex-basis: 100%;
+  }
+
+  .test-preview__dots,
+  .test-preview__body,
+  .test-preview__foot {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
+/* Exam: "calculating your result" screen after Finish. */
+.exam-submitting {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: var(--exam-glass-strong);
+  backdrop-filter: blur(12px);
+  animation: overlay-in 0.2s ease;
+}
+
+.exam-submitting__card {
+  width: min(380px, 100%);
+  padding: 2rem 1.75rem 1.75rem;
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.exam-submitting__card h2 {
+  margin: 1rem 0 1.25rem;
+  font-size: 1.25rem;
+  color: var(--exam-on-surface);
+}
+
+.exam-submitting__spinner {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 5px solid var(--exam-container-high);
+  border-top-color: var(--exam-primary-container);
+  animation: exam-spin 0.9s linear infinite;
+}
+
+.exam-submitting__steps {
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+  text-align: left;
+}
+
+.exam-submitting__steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  color: var(--exam-outline);
+  transition: color 0.25s ease;
+}
+
+.exam-submitting__steps li .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.exam-submitting__steps li.is-active {
+  color: var(--exam-on-surface);
+  font-weight: 600;
+}
+
+.exam-submitting__steps li.is-done {
+  color: var(--success);
+}
+
+.exam-submitting__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--exam-container-high);
+  overflow: hidden;
+}
+
+.exam-submitting__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--exam-primary), var(--exam-primary-container));
+  transition: width 0.7s ease;
+}
+
+@keyframes exam-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exam-submitting__spinner {
+    animation-duration: 2.5s;
+  }
 }

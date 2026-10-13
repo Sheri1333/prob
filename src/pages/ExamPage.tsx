@@ -29,6 +29,9 @@ import {
   type ExamSessionResponse,
 } from "../utils/examDraft";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
+import { ExamSubmitting } from "../components/ExamSubmitting";
+
+const SUBMIT_MIN_MS = 3200;
 
 interface ExamPageProps {
   lang: Lang;
@@ -224,14 +227,19 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     setFinishing(true);
     window.clearTimeout(saveTimer.current);
     try {
-      const result = await api.submitExam({
-        sessionId: current.sessionId,
-        startedAt: current.startedAt,
-        sections: current.sections.map((s) => ({
-          testId: s.testId,
-          answers: answersToStringKeys(current.answersByTest[s.testId] ?? {}),
-        })),
-      });
+      // Keep the "calculating" screen up long enough to read, even when the
+      // server answers instantly.
+      const [result] = await Promise.all([
+        api.submitExam({
+          sessionId: current.sessionId,
+          startedAt: current.startedAt,
+          sections: current.sections.map((s) => ({
+            testId: s.testId,
+            answers: answersToStringKeys(current.answersByTest[s.testId] ?? {}),
+          })),
+        }),
+        new Promise((resolve) => window.setTimeout(resolve, SUBMIT_MIN_MS)),
+      ]);
       rememberUsedVariants(current.usedTestIds);
       clearExamDraft();
       navigate(`/exam/results/${result.sessionId}`, { state: result });
@@ -552,6 +560,8 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
           }}
         />
       )}
+
+      {finishing && <ExamSubmitting lang={lang} />}
 
       {zoomSrc && (
         <button

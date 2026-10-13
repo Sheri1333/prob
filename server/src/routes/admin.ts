@@ -296,56 +296,47 @@ adminRouter.get("/stats", async (_req, res) => {
 });
 
 adminRouter.get("/users", async (_req, res) => {
-  const rows = await users()
-    .aggregate([
-      { $sort: { createdAt: -1 } },
-      {
-        $lookup: {
-          from: "attempts",
-          localField: "_id",
-          foreignField: "userId",
-          as: "attempts",
-        },
-      },
-      {
-        $addFields: {
-          attemptsCount: { $size: "$attempts" },
-          avgPercent: {
-            $avg: {
-              $map: {
-                input: {
-                  $filter: {
-                    input: "$attempts",
-                    as: "a",
-                    cond: { $gt: ["$$a.maxScore", 0] },
-                  },
-                },
-                as: "a",
-                in: {
-                  $multiply: [{ $divide: ["$$a.score", "$$a.maxScore"] }, 100],
-                },
-              },
-            },
-          },
-        },
-      },
-      { $project: { attempts: 0, passwordHash: 0 } },
-    ])
-    .toArray();
+  const [userRows, attemptRows] = await Promise.all([
+    users()
+      .find({}, { projection: { passwordHash: 0 } })
+      .sort({ createdAt: -1 })
+      .toArray(),
+    attempts()
+      .find({ userId: { $ne: null } }, { projection: { userId: 1, sessionId: 1, score: 1, maxScore: 1 } })
+      .toArray(),
+  ]);
+
+  // One full ENT is several section attempts sharing a sessionId; older
+  // single-test attempts have none and count as their own exam.
+  const exams = new Map<string, Map<string, { score: number; maxScore: number }>>();
+  for (const a of attemptRows) {
+    if (!(a.userId instanceof ObjectId)) continue;
+    const uid = a.userId.toHexString();
+    const examKey = a.sessionId || a._id.toHexString();
+    const byExam = exams.get(uid) ?? new Map();
+    const total = byExam.get(examKey) ?? { score: 0, maxScore: 0 };
+    total.score += a.score;
+    total.maxScore += a.maxScore;
+    byExam.set(examKey, total);
+    exams.set(uid, byExam);
+  }
 
   res.json({
-    users: rows.map((row) => ({
-      id: (row._id as ObjectId).toHexString(),
-      email: row.email,
-      name: row.name,
-      role: row.role,
-      createdAt: (row.createdAt as Date).toISOString(),
-      attemptsCount: row.attemptsCount ?? 0,
-      avgPercent:
-        typeof row.avgPercent === "number"
-          ? Math.round(row.avgPercent * 10) / 10
-          : null,
-    })),
+    users: userRows.map((row) => {
+      const list = [...(exams.get(row._id.toHexString())?.values() ?? [])];
+      const avg = (pick: (e: { score: number; maxScore: number }) => number) =>
+        list.length ? Math.round((list.reduce((s, e) => s + pick(e), 0) / list.length) * 10) / 10 : null;
+      return {
+        id: row._id.toHexString(),
+        email: row.email,
+        name: row.name,
+        role: row.role,
+        createdAt: row.createdAt.toISOString(),
+        examsCount: list.length,
+        avgScore: avg((e) => e.score),
+        avgMaxScore: avg((e) => e.maxScore),
+      };
+    }),
   });
 });
 
@@ -389,6 +380,7 @@ adminRouter.get("/attempts", async (req, res) => {
       return {
         id: row._id.toHexString(),
         userId: row.userId?.toHexString() ?? "",
+        sessionId: row.sessionId || null,
         testId: row.testId,
         score: row.score,
         maxScore: row.maxScore,
