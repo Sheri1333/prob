@@ -12,7 +12,6 @@ import {
   isAnswerKeyComplete,
   keyedCount,
   nextQuestionId,
-  applyAnswerKeys,
 } from "../utils/answerKey";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
 import { TestPreview } from "../components/admin/TestPreview";
@@ -104,7 +103,6 @@ export function AdminPage() {
     title: string;
     text: string;
   } | null>(null);
-  const [editorKeysText, setEditorKeysText] = useState("");
   const [emailStatus, setEmailStatus] = useState<Awaited<
     ReturnType<typeof api.adminEmailStatus>
   > | null>(null);
@@ -274,7 +272,6 @@ export function AdminPage() {
     setDraftQuestions([]);
     setPreviewMeta(EMPTY_META);
     setOpenPreviewId(null);
-    setEditorKeysText("");
   }
 
   function startManual() {
@@ -453,22 +450,6 @@ export function AdminPage() {
     } finally {
       setImportingKeys(false);
     }
-  }
-
-  function applyEditorKeys() {
-    if (!editorKeysText.trim()) return;
-    const result = applyAnswerKeys(draftQuestions, editorKeysText);
-    if (result.applied === 0) {
-      toast("error", "Не удалось применить ключи к вопросам этого теста");
-      return;
-    }
-    setDraftQuestions(result.questions);
-    toast(
-      "ok",
-      `Ключи проставлены: ${result.applied}` +
-        (result.skipped.length ? `, нет вопросов: ${result.skipped.join(", ")}` : ""),
-    );
-    setEditorKeysText("");
   }
 
   async function loadTestForEdit(id: string, fromUrl = false) {
@@ -1135,29 +1116,6 @@ export function AdminPage() {
                       }
                     />
                   </label>
-                </div>
-
-                <div className="admin-bulk-keys">
-                  <h2>Вставить ключи списком</h2>
-                  <p className="admin-hint">
-                    Формат: 1-A 2-C 3-BD или JSON {"{ \"1\": \"A\", \"2\": [\"B\",\"C\"] }"}.
-                    Сопоставление: 31-1A,2C.
-                  </p>
-                  <textarea
-                    rows={4}
-                    value={editorKeysText}
-                    spellCheck={false}
-                    placeholder={"1-A\n2-C\n3-B"}
-                    onChange={(e) => setEditorKeysText(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="admin-btn"
-                    disabled={!editorKeysText.trim()}
-                    onClick={applyEditorKeys}
-                  >
-                    Проставить ключи
-                  </button>
                 </div>
 
                 <div className="admin-key-progress">

@@ -3038,7 +3038,6 @@ label.admin-btn--primary:hover {
 }
 
 .admin-keys-import textarea,
-.admin-bulk-keys textarea,
 .admin-modal textarea {
   width: 100%;
   margin: 0.5rem 0 0.75rem;
