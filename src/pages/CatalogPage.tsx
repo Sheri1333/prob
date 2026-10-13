@@ -479,7 +479,7 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
           <strong>
             <AnimatedNumber value={comboCount} />
           </strong>
-          <span>{lang === "kz" ? "бейіндік комбинация" : "профильных комбинаций"}</span>
+          <span>{lang === "kz" ? "комбинация" : "комбинаций"}</span>
         </div>
       </section>
 
