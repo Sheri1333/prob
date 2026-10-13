@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="talapker-bar" x1="6" y1="6" x2="58" y2="21" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4558F4"/>
+      <stop offset="1" stop-color="#5E7DFF"/>
+    </linearGradient>
+    <linearGradient id="talapker-stem" x1="23" y1="25" x2="41" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3446EB"/>
+      <stop offset="1" stop-color="#5470FF"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#talapker-bar)" d="M8 6h48a2 2 0 0 1 2 2v7a6 6 0 0 1-6 6H12a6 6 0 0 1-6-6V8a2 2 0 0 1 2-2z"/>
+  <path fill="url(#talapker-stem)" d="M24 25h8a9 9 0 0 1 9 9v22a2 2 0 0 1-2 2h-9a7 7 0 0 1-7-7V26a1 1 0 0 1 1-1z"/>
+</svg>

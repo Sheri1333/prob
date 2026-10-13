@@ -954,7 +954,9 @@ export function AdminPage() {
             {!editing && (
               <div className="admin-create-grid">
                 <article className="admin-create-card">
+                  <span className="admin-create-card__icon material-symbols-outlined">edit_note</span>
                   <h2>Вручную</h2>
+                  <p>Вопросы и ответы заполняете в форме.</p>
                   <button
                     type="button"
                     className="admin-btn admin-btn--primary"
@@ -964,8 +966,9 @@ export function AdminPage() {
                   </button>
                 </article>
                 <article className="admin-create-card">
+                  <span className="admin-create-card__icon material-symbols-outlined">upload_file</span>
                   <h2>Из PDF или Word</h2>
-                  <p>Ключи берутся из выделенных ответов или таблицы ответов.</p>
+                  <p>Вопросы и ключи подтянутся из файла.</p>
                   <label className="admin-btn admin-btn--primary">
                     {parsing ? "Разбор файла..." : "Выбрать PDF или .docx"}
                     <input

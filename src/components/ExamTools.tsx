@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Lang } from "../i18n/strings";
+import { SolubilityPanel } from "./SolubilityTable";
 
-type ToolId = "calculator" | "mendeleev" | null;
+type ToolId = "calculator" | "mendeleev" | "solubility" | null;
 
 interface ExamToolsProps {
   lang: Lang;
@@ -363,6 +364,14 @@ export function ExamTools({ lang }: ExamToolsProps) {
           <span className="material-symbols-outlined">science</span>
           {lang === "kz" ? "Менделеев" : "Менделеев"}
         </button>
+        <button
+          type="button"
+          className={`exam-tools__btn ${open === "solubility" ? "active" : ""}`}
+          onClick={() => pick(open === "solubility" ? null : "solubility")}
+        >
+          <span className="material-symbols-outlined">water_drop</span>
+          {lang === "kz" ? "Ерігіштік" : "Растворимость"}
+        </button>
       </div>
 
       {open &&
@@ -370,7 +379,7 @@ export function ExamTools({ lang }: ExamToolsProps) {
           <div className="exam-tools__overlay" onClick={() => setOpen(null)}>
             <div
               className={`exam-tools__modal ${
-                open === "mendeleev" ? "exam-tools__modal--wide" : ""
+                open === "calculator" ? "" : "exam-tools__modal--wide"
               }`}
               onClick={(e) => e.stopPropagation()}
               role="dialog"
@@ -379,9 +388,13 @@ export function ExamTools({ lang }: ExamToolsProps) {
                 <h3>
                   {open === "calculator"
                     ? "Калькулятор"
-                    : lang === "kz"
-                      ? "Менделеев кестесі"
-                      : "Таблица Менделеева"}
+                    : open === "solubility"
+                      ? lang === "kz"
+                        ? "Тұздардың, қышқылдардың және негіздердің ерігіштік кестесі"
+                        : "Растворимость кислот, солей и оснований в воде"
+                      : lang === "kz"
+                        ? "Менделеев кестесі"
+                        : "Таблица Менделеева"}
                 </h3>
                 <button type="button" onClick={() => setOpen(null)}>
                   <span className="material-symbols-outlined">close</span>
@@ -389,6 +402,8 @@ export function ExamTools({ lang }: ExamToolsProps) {
               </div>
               {open === "calculator" ? (
                 <CalculatorPanel />
+              ) : open === "solubility" ? (
+                <SolubilityPanel lang={lang} />
               ) : (
                 <MendeleevPanel lang={lang} />
               )}
