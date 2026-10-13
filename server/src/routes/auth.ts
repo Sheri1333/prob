@@ -19,7 +19,7 @@ const TOO_MANY = "Слишком много попыток. Попробуйте
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: TOO_MANY });
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: TOO_MANY });
 const mailLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: TOO_MANY });
-const EMAIL_RE = /^[^s@]+@[^s@]+.[^s@]+$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
