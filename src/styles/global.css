@@ -242,7 +242,7 @@ select {
   pointer-events: none;
 }
 
-/* Kazakh oyu ornament tucked into the top-right corner of the hero. */
+/* Kazakh oyu corner ornament (public/ornament.png) in the hero's top-right. */
 .hero::before {
   content: "";
   position: absolute;
@@ -250,10 +250,13 @@ select {
   right: 0.5rem;
   z-index: 0;
   height: calc(100% - 1rem);
-  max-height: 11rem;
+  max-height: 8.5rem;
   aspect-ratio: 1;
-  background: url("/ornament.svg") top right / contain no-repeat;
-  opacity: 0.22;
+  background: url("/ornament.png") top left / contain no-repeat;
+  /* Grey source image: turn it white and mirror its corner to the top-right. */
+  filter: brightness(0) invert(1);
+  transform: scaleX(-1);
+  opacity: 0.28;
   pointer-events: none;
 }
 
