@@ -1,13 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
-  <!-- Қошқар мүйіз (ram's horn): one horn, mirrored, turned so the stem
-       sits on the right edge and the horns open to the left. -->
-  <g transform="rotate(-90 120 120)">
-    <g id="talapker-horn">
-      <path stroke-width="13" d="M120 236C120 178 128 140 150 118C172 96 204 98 210 122C216 146 192 160 178 146C168 136 178 120 190 126"/>
-      <path stroke-width="11" d="M120 112C120 92 130 74 150 66C170 58 186 70 182 86C178 100 160 98 162 86"/>
-      <path stroke-width="8" d="M120 58C124 40 138 30 152 34"/>
-      <path stroke-width="7" d="M120 186C126 172 140 170 146 180C150 188 142 194 137 188"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">
+  <!-- Kazakh oyu corner ornament. One half is drawn and mirrored across the
+       diagonal; the whole piece is flipped so its corner sits top-right. -->
+  <g transform="matrix(-1 0 0 1 600 0)">
+    <g id="oyu-half" fill="#fff" stroke="#fff" stroke-linecap="round">
+      <path fill="none" stroke-width="44" d="M262 280C240 222 222 168 216 110"/>
+      <path fill="none" stroke-width="46" d="M296 284C276 204 290 112 348 94C408 76 444 142 414 186C388 224 332 208 336 166C339 142 364 136 372 150"/>
+      <path stroke="none" d="M318 300C400 276 452 200 486 130C504 94 526 74 552 58C536 86 522 116 510 150C488 220 440 290 350 330Z"/>
+      <path stroke="none" d="M204 240C152 204 100 142 58 58C142 100 204 152 240 204Z"/>
+      <path stroke="none" d="M292 356C330 396 380 420 422 422C420 380 396 330 356 292Z"/>
+      <circle stroke="none" cx="290" cy="290" r="58"/>
     </g>
-    <use href="#talapker-horn" transform="matrix(-1 0 0 1 240 0)"/>
+    <use href="#oyu-half" transform="matrix(0 1 1 0 0 0)"/>
   </g>
 </svg>

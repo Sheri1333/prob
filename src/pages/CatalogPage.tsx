@@ -355,64 +355,68 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
         <div className="pricing__grid">
           {pricing.trialEnabled && (
             <div className="pricing-card reveal">
+              <div className="pricing-card__inner">
+                <h3 className="pricing-card__name">
+                  {lang === "kz" ? "Тегін сынақ" : "Бесплатный пробник"}
+                </h3>
+                <div className="pricing-card__price">0 ₸</div>
+                <ul className="pricing-card__list">
+                  <li className="ok">
+                    <span className="material-symbols-outlined">check_circle</span>
+                    {lang === "kz" ? "Толық ҰБТ бір рет" : "Полный ЕНТ один раз"}
+                  </li>
+                  <li className="ok">
+                    <span className="material-symbols-outlined">check_circle</span>
+                    {lang === "kz"
+                      ? "Барлық бейіндік комбинациялар"
+                      : "Все профильные комбинации"}
+                  </li>
+                  <li className="ok">
+                    <span className="material-symbols-outlined">check_circle</span>
+                    {lang === "kz"
+                      ? `Сессия — ${sessionMinutes} ${t("minutes", lang)}`
+                      : `Сессия — ${sessionMinutes} ${t("minutes", lang)}`}
+                  </li>
+                </ul>
+                <button
+                  type="button"
+                  className="test-card__cta pricing-card__cta"
+                  onClick={openFreePlan}
+                >
+                  {lang === "kz" ? "Бастау" : "Начать"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="pricing-card reveal">
+            <div className="pricing-card__inner">
               <h3 className="pricing-card__name">
-                {lang === "kz" ? "Тегін сынақ" : "Бесплатный пробник"}
+                {lang === "kz" ? "Толық ҰБТ" : "Полный ЕНТ"}
               </h3>
-              <div className="pricing-card__price">0 ₸</div>
+              <div className="pricing-card__price">
+                {formatTenge(pricing.singlePriceTenge)}
+              </div>
               <ul className="pricing-card__list">
                 <li className="ok">
                   <span className="material-symbols-outlined">check_circle</span>
-                  {lang === "kz" ? "Толық ҰБТ бір рет" : "Полный ЕНТ один раз"}
+                  {lang === "kz" ? "Бір толық сессия" : "Одна полная сессия"}
                 </li>
                 <li className="ok">
                   <span className="material-symbols-outlined">check_circle</span>
                   {lang === "kz"
-                    ? "Барлық бейіндік комбинациялар"
-                    : "Все профильные комбинации"}
-                </li>
-                <li className="ok">
-                  <span className="material-symbols-outlined">check_circle</span>
-                  {lang === "kz"
-                    ? `Сессия — ${sessionMinutes} ${t("minutes", lang)}`
-                    : `Сессия — ${sessionMinutes} ${t("minutes", lang)}`}
+                    ? "Нәтиже және қате талдауы"
+                    : "Результат и разбор ошибок"}
                 </li>
               </ul>
               <button
                 type="button"
                 className="test-card__cta pricing-card__cta"
-                onClick={openFreePlan}
+                onClick={buySoon}
               >
-                {lang === "kz" ? "Бастау" : "Начать"}
+                {lang === "kz" ? "Сатып алу" : "Купить"}
               </button>
             </div>
-          )}
-
-          <div className="pricing-card reveal">
-            <h3 className="pricing-card__name">
-              {lang === "kz" ? "Толық ҰБТ" : "Полный ЕНТ"}
-            </h3>
-            <div className="pricing-card__price">
-              {formatTenge(pricing.singlePriceTenge)}
-            </div>
-            <ul className="pricing-card__list">
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz" ? "Бір толық сессия" : "Одна полная сессия"}
-              </li>
-              <li className="ok">
-                <span className="material-symbols-outlined">check_circle</span>
-                {lang === "kz"
-                  ? "Нәтиже және қате талдауы"
-                  : "Результат и разбор ошибок"}
-              </li>
-            </ul>
-            <button
-              type="button"
-              className="test-card__cta pricing-card__cta"
-              onClick={buySoon}
-            >
-              {lang === "kz" ? "Сатып алу" : "Купить"}
-            </button>
           </div>
 
           <div className="pricing-card pricing-card--featured reveal">
