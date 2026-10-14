@@ -242,6 +242,28 @@ select {
   pointer-events: none;
 }
 
+/* Kazakh қошқар мүйіз ornament on the right edge of the hero. */
+.hero::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -0.5rem;
+  z-index: 0;
+  height: calc(100% + 2.5rem);
+  aspect-ratio: 1;
+  transform: translateY(-50%);
+  background: url("/ornament.svg") center / contain no-repeat;
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+@media (max-width: 560px) {
+  .hero::before {
+    right: -2.5rem;
+    opacity: 0.14;
+  }
+}
+
 .hero__copy {
   position: relative;
   z-index: 1;

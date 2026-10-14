@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Қошқар мүйіз (ram's horn): one horn, mirrored, turned so the stem
+       sits on the right edge and the horns open to the left. -->
+  <g transform="rotate(-90 120 120)">
+    <g id="talapker-horn">
+      <path stroke-width="13" d="M120 236C120 178 128 140 150 118C172 96 204 98 210 122C216 146 192 160 178 146C168 136 178 120 190 126"/>
+      <path stroke-width="11" d="M120 112C120 92 130 74 150 66C170 58 186 70 182 86C178 100 160 98 162 86"/>
+      <path stroke-width="8" d="M120 58C124 40 138 30 152 34"/>
+      <path stroke-width="7" d="M120 186C126 172 140 170 146 180C150 188 142 194 137 188"/>
+    </g>
+    <use href="#talapker-horn" transform="matrix(-1 0 0 1 240 0)"/>
+  </g>
+</svg>
