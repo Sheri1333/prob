@@ -6,7 +6,7 @@ import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ToastHost, useToasts } from "../components/Toast";
 import { ThemeToggle } from "../components/ThemeToggle";
-import type { Question, QuestionType, TestDefinition } from "../types/test";
+import type { Question, QuestionType, TestDefinition, TestOrigin } from "../types/test";
 import {
   createBlankQuestion,
   isAnswerKeyComplete,
@@ -35,6 +35,13 @@ const EMPTY_META = {
   subject: "",
   durationMinutes: 50,
   description: "",
+  origin: "manual" as TestOrigin,
+};
+
+const ORIGIN_LABEL: Record<TestOrigin, string> = {
+  ai: "Сгенерированный ИИ",
+  file: "Из файла",
+  manual: "Вручную",
 };
 
 export function AdminPage() {
@@ -92,6 +99,7 @@ export function AdminPage() {
   const [savingPricing, setSavingPricing] = useState(false);
   const [testQuery, setTestQuery] = useState("");
   const [testQuestions, setTestQuestions] = useState("");
+  const [testOrigin, setTestOrigin] = useState("");
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [previewTestId, setPreviewTestId] = useState<string | null>(null);
   const [pool, setPool] = useState<Awaited<
@@ -207,6 +215,7 @@ export function AdminPage() {
   const openSubject = (subject: string) => {
     setTestQuery("");
     setTestQuestions("");
+    setTestOrigin("");
     go("tests", subject ? { subject } : {});
   };
   const filteredTests = useMemo(() => {
@@ -215,6 +224,7 @@ export function AdminPage() {
       if (testQuestions && String(t.questionCount) !== testQuestions) {
         return false;
       }
+      if (testOrigin && t.origin !== testOrigin) return false;
       if (!q) return true;
       const hay = [
         t.titleKz,
@@ -227,7 +237,7 @@ export function AdminPage() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [subjectTests, testQuery, testQuestions]);
+  }, [subjectTests, testQuery, testQuestions, testOrigin]);
 
   useEffect(() => {
     if (!isAdmin || tab !== "editor" || !testParam) return;
@@ -336,6 +346,7 @@ export function AdminPage() {
           subject: d.subject,
           durationMinutes: d.durationMinutes,
           description: d.description ?? "",
+          origin: "file" as const,
         },
       }));
       setParseResult(result);
@@ -384,6 +395,7 @@ export function AdminPage() {
         durationMinutes: Number(previewMeta.durationMinutes) || 50,
         isFree: true,
         description: previewMeta.description,
+        origin: previewMeta.origin,
         questionCount: draftQuestions.length,
         questions: draftQuestions,
       };
@@ -466,6 +478,7 @@ export function AdminPage() {
         subject: test.subject,
         durationMinutes: test.durationMinutes,
         description: test.description ?? "",
+        origin: test.origin ?? "manual",
       });
       setOpenPreviewId(test.questions[0]?.id ?? null);
       if (!fromUrl) go("editor", { test: test.id });
@@ -871,6 +884,15 @@ export function AdminPage() {
                       </option>
                     ))}
                   </select>
+                  <select
+                    value={testOrigin}
+                    onChange={(e) => setTestOrigin(e.target.value)}
+                  >
+                    <option value="">Все источники</option>
+                    <option value="ai">Сгенерированные ИИ</option>
+                    <option value="file">Из файла</option>
+                    <option value="manual">Вручную</option>
+                  </select>
                 </div>
                 {filteredTests.length === 0 ? (
                   <div className="admin-empty">Нет тестов по этому фильтру.</div>
@@ -880,6 +902,7 @@ export function AdminPage() {
                       <thead>
                         <tr>
                           <th>Название</th>
+                          <th>Источник</th>
                           <th>Вопросов</th>
                           <th>Действия</th>
                         </tr>
@@ -889,6 +912,15 @@ export function AdminPage() {
                           <tr key={t.id}>
                             <td>
                               <strong>{t.titleKz || t.title}</strong>
+                            </td>
+                            <td>
+                              {t.origin ? (
+                                <span className={`admin-origin admin-origin--${t.origin}`}>
+                                  {ORIGIN_LABEL[t.origin]}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
                             </td>
                             <td>{t.questionCount}</td>
                             <td>
@@ -1086,6 +1118,22 @@ export function AdminPage() {
                           </option>
                         ))}
                       </optgroup>
+                    </select>
+                  </label>
+                  <label>
+                    Источник
+                    <select
+                      value={previewMeta.origin}
+                      onChange={(e) =>
+                        setPreviewMeta((m) => ({
+                          ...m,
+                          origin: e.target.value as TestOrigin,
+                        }))
+                      }
+                    >
+                      <option value="manual">Вручную</option>
+                      <option value="file">Из файла</option>
+                      <option value="ai">Сгенерированный ИИ</option>
                     </select>
                   </label>
                   <label>

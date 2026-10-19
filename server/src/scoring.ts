@@ -53,6 +53,9 @@ export type Question =
 
 export type AnswerValue = string | string[] | Record<string, string>;
 
+/** Where the variant came from. Missing on older rows means "not marked". */
+export type TestOrigin = "file" | "manual" | "ai";
+
 export interface TestPayload {
   id: string;
   title: string;
@@ -65,6 +68,7 @@ export interface TestPayload {
   priceTenge?: number | null;
   description?: string;
   coverImage?: string;
+  origin?: TestOrigin;
   questions: Question[];
 }
 
@@ -302,6 +306,7 @@ export function validateTestPayload(body: unknown): TestPayload {
     throw new Error("questions должен быть непустым массивом");
   }
   assertAnswerKeys(b.questions as Question[]);
+  const origin = b.origin;
   return {
     id: requestedId || newTestId(),
     title: titleKz,
@@ -314,6 +319,10 @@ export function validateTestPayload(body: unknown): TestPayload {
     priceTenge: null,
     description: typeof b.description === "string" ? b.description : "",
     coverImage: typeof b.coverImage === "string" ? b.coverImage : "",
+    origin:
+      origin === "file" || origin === "manual" || origin === "ai"
+        ? origin
+        : undefined,
     questions: b.questions as Question[],
   };
 }

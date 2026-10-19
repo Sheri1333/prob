@@ -358,6 +358,7 @@ export const api = {
         priceTenge: number | null;
         description: string;
         coverImage?: string;
+        origin?: "file" | "manual" | "ai" | null;
         createdAt: string;
         updatedAt: string;
       }>;

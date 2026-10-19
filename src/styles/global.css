@@ -2409,6 +2409,32 @@ span.landing-feature__icon {
   flex: 2 1 220px;
 }
 
+.admin-origin {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  white-space: nowrap;
+  background: var(--blue-light);
+  color: var(--blue-dark);
+}
+
+.admin-origin--ai {
+  background: #efe9ff;
+  color: #5b3cc4;
+}
+
+.admin-origin--file {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+[data-theme="dark"] .admin-origin--ai {
+  background: rgba(140, 110, 240, 0.22);
+  color: #d4c6ff;
+}
+
 .admin-table tbody tr.is-clickable {
   cursor: pointer;
 }

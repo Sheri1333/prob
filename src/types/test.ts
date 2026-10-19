@@ -1,5 +1,8 @@
 export type QuestionType = "single_choice" | "multiple_choice" | "matching";
 
+/** file = PDF/Word, manual = editor, ai = generated variant. */
+export type TestOrigin = "file" | "manual" | "ai";
+
 export interface TestOption {
   id: string;
   label: string;
@@ -58,6 +61,7 @@ export interface TestDefinition {
   priceTenge?: number;
   description?: string;
   coverImage?: string;
+  origin?: TestOrigin;
   questions: Question[];
 }
 

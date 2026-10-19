@@ -62,6 +62,8 @@ export interface TestDoc {
   priceTenge: number | null;
   description: string;
   coverImage: string;
+  /** file = PDF/Word, manual = editor, ai = generated variant. */
+  origin?: "file" | "manual" | "ai";
   questions: Question[];
   createdAt: Date;
   updatedAt: Date;
