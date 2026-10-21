@@ -30,8 +30,17 @@ import {
 } from "../utils/examDraft";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
 import { ExamSubmitting } from "../components/ExamSubmitting";
+import "../styles/home.css";
 
 const SUBMIT_MIN_MS = 3200;
+
+/** Official ҰБТ maximum per block (20 + 10 + 10 + 50 + 50 = 140). */
+const BLOCK_POINTS: Record<ExamSectionMeta["block"], number> = {
+  history: 20,
+  reading: 10,
+  math_literacy: 10,
+  profile: 50,
+};
 
 interface ExamPageProps {
   lang: Lang;
@@ -316,19 +325,32 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
         answered,
         total: s.questions.length,
         current: i === draft.sectionIndex,
+        points: BLOCK_POINTS[s.block],
       };
     });
   }, [draft, lang]);
 
   if (loading) {
-    return <div className="page page--center">Загрузка ЕНТ...</div>;
+    return (
+      <div className="page v2 exam-state" role="status">
+        <p>{lang === "kz" ? "ҰБТ ашылуда…" : "Открываем ЕНТ…"}</p>
+      </div>
+    );
   }
 
   if (loadError || !draft || !section) {
     return (
-      <div className="page page--center">
-        <p>{loadError || "Сессия не найдена"}</p>
-        <Link to="/">Каталог</Link>
+      <div className="page v2 exam-state">
+        <h1>{lang === "kz" ? "ҰБТ ашылмады" : "ЕНТ не открылся"}</h1>
+        <p>
+          {loadError ||
+            (lang === "kz"
+              ? "Мұндай сессия табылмады. Басты беттен жаңа ҰБТ бастаңыз."
+              : "Такая сессия не найдена. Начните новый ЕНТ с главной.")}
+        </p>
+        <Link to="/" className="v2-btn">
+          {lang === "kz" ? "Басты бетке" : "На главную"}
+        </Link>
       </div>
     );
   }

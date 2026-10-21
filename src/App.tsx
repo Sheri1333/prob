@@ -16,7 +16,9 @@ import {
 import { LegalPage } from "./pages/LegalPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import "./styles/tokens.css";
 import "./styles/global.css";
+import "./styles/screens.css";
 
 const LANG_KEY = "prob_lang";
 
@@ -49,26 +51,26 @@ export function App() {
               path="/"
               element={<CatalogPage lang={lang} onToggleLang={toggleLang} />}
             />
-            <Route path="/faq" element={<LegalPage lang={lang} kind="faq" />} />
-            <Route path="/terms" element={<LegalPage lang={lang} kind="terms" />} />
+            <Route path="/faq" element={<LegalPage lang={lang} onToggleLang={toggleLang} kind="faq" />} />
+            <Route path="/terms" element={<LegalPage lang={lang} onToggleLang={toggleLang} kind="terms" />} />
             <Route
               path="/privacy"
-              element={<LegalPage lang={lang} kind="privacy" />}
+              element={<LegalPage lang={lang} onToggleLang={toggleLang} kind="privacy" />}
             />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/forgot" element={<ForgotPasswordPage />} />
-            <Route path="/reset" element={<ResetPasswordPage />} />
-            <Route path="/verify" element={<VerifyEmailPage />} />
-            <Route path="/profile" element={<ProfilePage lang={lang} />} />
+            <Route path="/login" element={<LoginPage lang={lang} onToggleLang={toggleLang} />} />
+            <Route path="/register" element={<RegisterPage lang={lang} onToggleLang={toggleLang} />} />
+            <Route path="/forgot" element={<ForgotPasswordPage lang={lang} onToggleLang={toggleLang} />} />
+            <Route path="/reset" element={<ResetPasswordPage lang={lang} onToggleLang={toggleLang} />} />
+            <Route path="/verify" element={<VerifyEmailPage lang={lang} onToggleLang={toggleLang} />} />
+            <Route path="/profile" element={<ProfilePage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route
               path="/exam/results/:sessionId"
-              element={<ExamResultsPage lang={lang} />}
+              element={<ExamResultsPage lang={lang} onToggleLang={toggleLang} />}
             />
             <Route
               path="/exam/results"
-              element={<ExamResultsPage lang={lang} />}
+              element={<ExamResultsPage lang={lang} onToggleLang={toggleLang} />}
             />
             <Route
               path="/exam/:sessionId"
@@ -78,7 +80,7 @@ export function App() {
               path="/exam"
               element={<ExamPage lang={lang} onToggleLang={toggleLang} />}
             />
-            <Route path="*" element={<NotFoundPage lang={lang} />} />
+            <Route path="*" element={<NotFoundPage lang={lang} onToggleLang={toggleLang} />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

@@ -8,6 +8,8 @@ export interface SectionSummary {
   answered: number;
   total: number;
   current: boolean;
+  /** Max ҰБТ points of the section; sets its width in the section strip. */
+  points?: number;
 }
 
 interface TestHeaderProps {
@@ -136,7 +138,13 @@ export function TestHeader({
         </div>
         <div className="exam-header__actions">
           {timerSeconds !== undefined && (
-            <span className="exam-header__timer">{formatTimer(timerSeconds)}</span>
+            <span
+              className={`exam-header__timer${timerSeconds <= 600 ? " exam-header__timer--low" : ""}`}
+              role="timer"
+              aria-label={lang === "kz" ? "Қалған уақыт" : "Осталось времени"}
+            >
+              {formatTimer(timerSeconds)}
+            </span>
           )}
           {onToggleLang && (
             <button type="button" className="exam-header__lang" onClick={onToggleLang}>
@@ -150,6 +158,36 @@ export function TestHeader({
           </button>
         </div>
       </div>
+
+      {hasMenu && (
+        <div
+          className="exam-sections"
+          role="group"
+          aria-label={lang === "kz" ? "ҰБТ бөлімдері" : "Разделы ЕНТ"}
+        >
+          {sections!.map((s, i) => (
+            <button
+              key={i}
+              type="button"
+              className={`exam-sections__seg${s.current ? " is-current" : ""}`}
+              style={{ flexGrow: s.points ?? s.total }}
+              aria-current={s.current ? "step" : undefined}
+              aria-label={`${s.subject}: ${s.answered} / ${s.total}`}
+              title={`${s.subject}: ${s.answered} / ${s.total}`}
+              onClick={() => onSwitchSection!(i)}
+            >
+              <span
+                className="exam-sections__fill"
+                style={{ width: `${s.total ? (s.answered / s.total) * 100 : 0}%` }}
+              />
+              <span className="exam-sections__label">{s.subject}</span>
+              <span className="exam-sections__count">
+                {s.answered}/{s.total}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {total > 0 && (
         <div className="exam-header__nav">

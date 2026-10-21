@@ -2,11 +2,19 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { SiteHeader } from "../components/SiteHeader";
+import type { Lang } from "../i18n/strings";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
+import "../styles/home.css";
 
-export function ForgotPasswordPage() {
-  useDocumentTitle("Сброс пароля");
+interface AuthPageProps {
+  lang: Lang;
+  onToggleLang: () => void;
+}
+
+export function ForgotPasswordPage({ lang, onToggleLang }: AuthPageProps) {
+  const kz = lang === "kz";
+  useDocumentTitle(kz ? "Құпиясөзді қалпына келтіру" : "Сброс пароля");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
@@ -27,42 +35,60 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <div className="auth-page">
-      <div className="auth-page__toggle">
-        <ThemeToggle />
-      </div>
-      <form className="auth-card" onSubmit={onSubmit}>
-        <h1>Сброс пароля</h1>
-        {error && <p className="auth-card__error">{error}</p>}
-        {done ? (
-          <p className="auth-card__notice">{done}</p>
-        ) : (
-          <>
-            <label>
-              Email
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-              />
-            </label>
-            <button type="submit" className="auth-card__btn" disabled={busy}>
-              {busy ? "..." : "Отправить ссылку"}
-            </button>
-          </>
-        )}
-        <p className="auth-card__footer">
-          <Link to="/login">Вернуться ко входу</Link>
-        </p>
-      </form>
+    <div className="page v2 auth-v2">
+      <SiteHeader lang={lang} onToggleLang={onToggleLang} />
+      <main className="auth-v2__main">
+        <form className="auth-form" onSubmit={onSubmit}>
+          <h1>{kz ? "Құпиясөзді қалпына келтіру" : "Сброс пароля"}</h1>
+          {done ? (
+            <p className="v2-notice" role="status">
+              {done}
+            </p>
+          ) : (
+            <>
+              <p className="auth-form__lead">
+                {kz
+                  ? "Тіркелген email-ді жазыңыз, жаңа құпиясөз орнату сілтемесін жібереміз."
+                  : "Укажите email, с которым регистрировались. Пришлём ссылку для нового пароля."}
+              </p>
+              {error && (
+                <p className="v2-error" role="alert">
+                  {error}
+                </p>
+              )}
+              <label className="field">
+                <span className="field__label">Email</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+              </label>
+              <button type="submit" className="v2-btn auth-form__submit" disabled={busy}>
+                {busy
+                  ? kz
+                    ? "Жіберілуде…"
+                    : "Отправляем…"
+                  : kz
+                    ? "Сілтеме жіберу"
+                    : "Отправить ссылку"}
+              </button>
+            </>
+          )}
+          <p className="auth-form__switch">
+            <Link to="/login">{kz ? "Кіру бетіне оралу" : "Вернуться ко входу"}</Link>
+          </p>
+        </form>
+      </main>
     </div>
   );
 }
 
-export function ResetPasswordPage() {
-  useDocumentTitle("Новый пароль");
+export function ResetPasswordPage({ lang, onToggleLang }: AuthPageProps) {
+  const kz = lang === "kz";
+  useDocumentTitle(kz ? "Жаңа құпиясөз" : "Новый пароль");
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const token = params.get("token") ?? "";
@@ -84,43 +110,68 @@ export function ResetPasswordPage() {
     }
   }
 
-  if (!token) {
-    return (
-      <div className="auth-page">
-        <p className="auth-card auth-card__error">Нет токена в ссылке</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="auth-page">
-      <div className="auth-page__toggle">
-        <ThemeToggle />
-      </div>
-      <form className="auth-card" onSubmit={onSubmit}>
-        <h1>Новый пароль</h1>
-        {error && <p className="auth-card__error">{error}</p>}
-        <label>
-          Пароль
-          <input
-            type="password"
-            value={password}
-            minLength={6}
-            required
-            autoComplete="new-password"
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        <button type="submit" className="auth-card__btn" disabled={busy}>
-          {busy ? "..." : "Сохранить"}
-        </button>
-      </form>
+    <div className="page v2 auth-v2">
+      <SiteHeader lang={lang} onToggleLang={onToggleLang} />
+      <main className="auth-v2__main">
+        {!token ? (
+          <div className="auth-form">
+            <h1>{kz ? "Сілтеме жарамсыз" : "Ссылка не работает"}</h1>
+            <p className="auth-form__lead">
+              {kz
+                ? "Сілтемеде қажетті код жоқ. Хаттағы сілтемені толық көшіріңіз немесе жаңасын сұраңыз."
+                : "В ссылке нет нужного кода. Откройте ссылку из письма целиком или запросите новую."}
+            </p>
+            <Link to="/forgot" className="v2-btn auth-form__submit">
+              {kz ? "Жаңа сілтеме сұрау" : "Запросить новую ссылку"}
+            </Link>
+          </div>
+        ) : (
+          <form className="auth-form" onSubmit={onSubmit}>
+            <h1>{kz ? "Жаңа құпиясөз" : "Новый пароль"}</h1>
+            <p className="auth-form__lead">
+              {kz
+                ? "Сақтағаннан кейін жаңа құпиясөзбен кіресіз."
+                : "После сохранения войдите с новым паролем."}
+            </p>
+            {error && (
+              <p className="v2-error" role="alert">
+                {error}
+              </p>
+            )}
+            <label className="field">
+              <span className="field__label">{kz ? "Жаңа құпиясөз" : "Новый пароль"}</span>
+              <input
+                type="password"
+                value={password}
+                minLength={6}
+                required
+                autoComplete="new-password"
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <span className="field__hint">
+                {kz ? "Кемінде 6 таңба" : "Не меньше 6 символов"}
+              </span>
+            </label>
+            <button type="submit" className="v2-btn auth-form__submit" disabled={busy}>
+              {busy
+                ? kz
+                  ? "Сақталуда…"
+                  : "Сохраняем…"
+                : kz
+                  ? "Құпиясөзді сақтау"
+                  : "Сохранить пароль"}
+            </button>
+          </form>
+        )}
+      </main>
     </div>
   );
 }
 
-export function VerifyEmailPage() {
-  useDocumentTitle("Подтверждение email");
+export function VerifyEmailPage({ lang, onToggleLang }: AuthPageProps) {
+  const kz = lang === "kz";
+  useDocumentTitle(kz ? "Email растау" : "Подтверждение email");
   const [params] = useSearchParams();
   const { applyAuth } = useAuth();
   const token = params.get("token") ?? "";
@@ -129,7 +180,7 @@ export function VerifyEmailPage() {
 
   useEffect(() => {
     if (!token) {
-      setError("Нет токена в ссылке");
+      setError(kz ? "Сілтемеде растау коды жоқ." : "В ссылке нет кода подтверждения.");
       return;
     }
     let cancelled = false;
@@ -148,24 +199,52 @@ export function VerifyEmailPage() {
     return () => {
       cancelled = true;
     };
+    // kz only changes copy; a language switch must not verify the token twice.
   }, [applyAuth, token]);
 
   return (
-    <div className="auth-page">
-      <div className="auth-page__toggle">
-        <ThemeToggle />
-      </div>
-      <div className="auth-card">
-        <h1>Подтверждение email</h1>
-        {error && <p className="auth-card__error">{error}</p>}
-        {ok && (
-          <p className="auth-card__notice">Почта подтверждена. Можно пользоваться Талапкер.</p>
-        )}
-        {!error && !ok && <p className="auth-card__hint">Проверяем ссылку...</p>}
-        <p className="auth-card__footer">
-          <Link to="/">{ok ? "На главную" : "Отмена"}</Link>
-        </p>
-      </div>
+    <div className="page v2 auth-v2">
+      <SiteHeader lang={lang} onToggleLang={onToggleLang} />
+      <main className="auth-v2__main">
+        <div className="auth-form" role="status" aria-live="polite">
+          <h1>
+            {ok
+              ? kz
+                ? "Email расталды"
+                : "Email подтверждён"
+              : error
+                ? kz
+                  ? "Email расталмады"
+                  : "Email не подтверждён"
+                : kz
+                  ? "Сілтемені тексеріп жатырмыз…"
+                  : "Проверяем ссылку…"}
+          </h1>
+          {ok && (
+            <p className="auth-form__lead">
+              {kz
+                ? "Енді нәтижелер поштаңызға келеді және құпиясөзді қалпына келтіре аласыз."
+                : "Теперь результаты будут приходить на почту, а пароль можно будет сбросить."}
+            </p>
+          )}
+          {error && (
+            <p className="v2-error" role="alert">
+              {error}
+            </p>
+          )}
+          {(ok || error) && (
+            <Link to={ok ? "/" : "/profile"} className="v2-btn auth-form__submit">
+              {ok
+                ? kz
+                  ? "Басты бетке"
+                  : "На главную"
+                : kz
+                  ? "Профильден хатты қайта жіберу"
+                  : "Отправить письмо ещё раз из профиля"}
+            </Link>
+          )}
+        </div>
+      </main>
     </div>
   );
 }

@@ -346,7 +346,7 @@ export function ExamTools({ lang }: ExamToolsProps) {
       </button>
       <div className="exam-tools__panel">
         <div className="exam-tools__label">
-          {lang === "kz" ? "ҚҰРАЛДАР" : "ИНСТРУМЕНТЫ"}
+          {lang === "kz" ? "Құралдар" : "Инструменты"}
         </div>
         <button
           type="button"

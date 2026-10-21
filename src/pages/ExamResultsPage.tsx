@@ -1,20 +1,27 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { SiteHeader } from "../components/SiteHeader";
 import { translateSubject } from "../i18n/subjects";
 import type { Lang } from "../i18n/strings";
 import { t } from "../i18n/strings";
 import { isSubmittedExam, type ExamSubmitResponse } from "../utils/examDraft";
 import { entScoreToGrade } from "../utils/testUtils";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
+import "../styles/home.css";
 
 interface ExamResultsPageProps {
   lang: Lang;
+  onToggleLang: () => void;
 }
 
-export function ExamResultsPage({ lang }: ExamResultsPageProps) {
-  useDocumentTitle(lang === "kz" ? "ҰБТ нәтижесі" : "Результаты ЕНТ");
+function share(score: number, max: number): string {
+  return max > 0 ? `${Math.min(100, Math.max(0, (score / max) * 100))}%` : "0%";
+}
+
+export function ExamResultsPage({ lang, onToggleLang }: ExamResultsPageProps) {
+  const kz = lang === "kz";
+  useDocumentTitle(kz ? "ҰБТ нәтижесі" : "Результаты ЕНТ");
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -53,167 +60,195 @@ export function ExamResultsPage({ lang }: ExamResultsPageProps) {
     };
   }, [sessionId, state, navigate]);
 
+  const header = (
+    <SiteHeader lang={lang} onToggleLang={onToggleLang}>
+      <Link to="/profile">{kz ? "Нәтижелер тарихы" : "История результатов"}</Link>
+      <Link to="/">{kz ? "Басты бет" : "Главная"}</Link>
+    </SiteHeader>
+  );
+
   if (loading) {
-    return <div className="page page--center">Загрузка...</div>;
+    return (
+      <div className="page v2">
+        {header}
+        <p className="v2-section__intro" role="status">
+          {kz ? "Нәтиже жүктелуде…" : "Загружаем результат…"}
+        </p>
+      </div>
+    );
   }
 
   if (!state?.sections?.length) {
     return (
-      <div className="page page--center">
-        <p>{error || `${t("results", lang)} жоқ`}</p>
-        <Link to="/profile">{lang === "kz" ? "Тарихқа" : "К истории"}</Link>
+      <div className="page v2">
+        {header}
+        <main className="not-found">
+          <h1>{kz ? "Нәтиже табылмады" : "Результат не найден"}</h1>
+          <p>
+            {error ||
+              (kz
+                ? "Бұл сілтеме бойынша аяқталған ҰБТ жоқ."
+                : "По этой ссылке нет завершённого ЕНТ.")}
+          </p>
+          <Link to="/profile" className="v2-btn">
+            {kz ? "Нәтижелер тарихына" : "К истории результатов"}
+          </Link>
+        </main>
       </div>
     );
   }
 
   const entGrade = entScoreToGrade(state.score, state.maxScore);
+  const finished = new Date(state.finishedAt).toLocaleDateString("ru-RU");
 
   return (
-    <div className="page ent-results">
-      <header className="ent-results__top">
-        <div className="ent-results__crumbs">
-          {lang === "kz" ? "ТЕСТІЛЕУ > ТЕСТІЛЕУДІ АЯҚТАУ" : "ТЕСТИРОВАНИЕ > ЗАВЕРШЕНИЕ"}
-        </div>
-        <div className="ent-results__actions">
-          <ThemeToggle />
-          <Link to="/profile" className="ent-results__history">
-            {lang === "kz" ? "Тарих" : "История"}
-          </Link>
-          <Link to="/" className="ent-results__home">
-            {lang === "kz" ? "Басты бетке" : "На главную"}
-          </Link>
-        </div>
-      </header>
+    <div className="page v2">
+      {header}
 
-      <section className="ent-results__panel">
-        <table className="ent-summary-table">
-          <thead>
-            <tr>
-              <th>{lang === "kz" ? "Бөлім" : "Раздел"}</th>
-              <th>
-                {lang === "kz"
-                  ? "Бөлім бойынша ұпай саны"
-                  : "Баллы по разделу"}
-              </th>
-              <th>{lang === "kz" ? "Барлығы" : "Итого"}</th>
-            </tr>
-          </thead>
+      <section className="result-head">
+        <h1>{kz ? "ҰБТ нәтижесі" : "Результат ЕНТ"}</h1>
+        <p className="result-head__date">
+          {kz ? `${finished} тапсырылды` : `Сдан ${finished}`}
+        </p>
+        <p className="result-head__score">
+          <strong>{state.score}</strong>
+          <span>/ {state.maxScore}</span>
+        </p>
+        {state.maxScore !== 140 && (
+          <p className="result-head__grade">
+            {t("entGrade", lang)}: {entGrade} / 140
+          </p>
+        )}
+
+        <div className="result-scale" aria-hidden="true">
+          {state.sections.map((s) => (
+            <div
+              key={s.testId}
+              className="result-scale__seg"
+              style={{ flexGrow: s.maxScore }}
+              title={`${translateSubject(s.subject, lang)}: ${s.score} / ${s.maxScore}`}
+            >
+              <span
+                className="result-scale__fill"
+                style={{ width: share(s.score, s.maxScore) }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <table className="result-table">
+          <caption className="visually-hidden">
+            {kz ? "Пәндер бойынша балл" : "Баллы по предметам"}
+          </caption>
           <tbody>
-            {state.sections.map((section, index) => (
-              <tr key={section.testId}>
-                <td>
-                  {translateSubject(section.subject, lang)}
+            {state.sections.map((s) => (
+              <tr key={s.testId}>
+                <th scope="row">{translateSubject(s.subject, lang)}</th>
+                <td className="result-table__bar">
+                  <span className="result-table__track">
+                    <span style={{ width: share(s.score, s.maxScore) }} />
+                  </span>
                 </td>
-                <td className="ent-summary-table__score">{section.score}</td>
-                {index === 0 && (
-                  <td
-                    className="ent-summary-table__total"
-                    rowSpan={state.sections.length}
-                  >
-                    <strong>{state.score}</strong>
-                    <span className="ent-summary-table__max">
-                      / {state.maxScore}
-                    </span>
-                    <div className="ent-summary-table__grade">
-                      {t("entGrade", lang)}: {entGrade}
-                    </div>
-                  </td>
-                )}
+                <td className="result-table__score">
+                  {s.score}
+                  <span> / {s.maxScore}</span>
+                </td>
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">{kz ? "Барлығы" : "Итого"}</th>
+              <td />
+              <td className="result-table__score">
+                {state.score}
+                <span> / {state.maxScore}</span>
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </section>
 
-      <h2 className="ent-results__subtitle">
-        {lang === "kz" ? "Тестілеу деректері" : "Данные тестирования"}
-      </h2>
+      <section className="v2-section">
+        <h2>{kz ? "Әр сұрақ бойынша" : "По каждому вопросу"}</h2>
+        <p className="v2-section__intro">
+          {kz
+            ? "Нағыз ҰБТ парағындағыдай: тапсырма нөмірі, сіздің жауабыңыз және алған балыңыз."
+            : "Как в листе настоящего ЕНТ: номер задания, ваш ответ и полученный балл."}
+        </p>
 
-      {state.sections.map((section) => {
-        const answered = Object.values(section.answerLabels).filter(Boolean)
-          .length;
-        const numbers = section.questionIds?.length
-          ? section.questionIds
-          : Array.from({ length: section.questionCount }, (_, i) => i + 1);
-        return (
-          <details key={section.testId} className="ent-detail" open>
-            <summary className="ent-detail__toggle">
-              <span className="material-symbols-outlined">expand_more</span>
-              {translateSubject(section.subject, lang)}
-            </summary>
-            <div className="ent-detail__meta">
-              <div>
-                <span>{lang === "kz" ? "Бөлім" : "Раздел"}</span>
-                <strong>{translateSubject(section.subject, lang)}</strong>
-              </div>
-              <div>
-                <span>{lang === "kz" ? "Жауаптар саны" : "Ответов"}</span>
-                <strong>{answered}</strong>
-              </div>
-              <div>
-                <span>
-                  {lang === "kz"
-                    ? "Бөлім бойынша ұпай саны"
-                    : "Баллы по разделу"}
+        {state.sections.map((section) => {
+          const answered = Object.values(section.answerLabels).filter(Boolean).length;
+          const numbers = section.questionIds?.length
+            ? section.questionIds
+            : Array.from({ length: section.questionCount }, (_, i) => i + 1);
+          return (
+            <details key={section.testId} className="answer-sheet" open>
+              <summary>
+                <span className="answer-sheet__subject">
+                  {translateSubject(section.subject, lang)}
                 </span>
-                <strong>
+                <span className="answer-sheet__meta">
+                  {kz
+                    ? `${answered} / ${section.questionCount} жауап`
+                    : `${answered} из ${section.questionCount} отвечено`}
+                </span>
+                <span className="answer-sheet__score">
                   {section.score} / {section.maxScore}
-                </strong>
+                </span>
+              </summary>
+
+              <div className="answer-sheet__scroll">
+                <table className="answer-grid">
+                  <tbody>
+                    <tr>
+                      <th scope="row">{kz ? "Тапсырма" : "Задание"}</th>
+                      {numbers.map((n, i) => (
+                        <td key={`n-${n}`}>{i + 1}</td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <th scope="row">{kz ? "Сіздің жауабыңыз" : "Ваш ответ"}</th>
+                      {numbers.map((n) => (
+                        <td key={`a-${n}`}>{section.answerLabels[n] || ""}</td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <th scope="row">{kz ? "Балл" : "Балл"}</th>
+                      {numbers.map((n) => {
+                        const pts = section.points?.[n] ?? (section.results[n] ? 1 : 0);
+                        return (
+                          <td
+                            key={`r-${n}`}
+                            className={
+                              section.results[n]
+                                ? "is-ok"
+                                : pts > 0
+                                  ? "is-part"
+                                  : "is-bad"
+                            }
+                          >
+                            {pts}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-            </div>
+            </details>
+          );
+        })}
 
-            <div className="ent-detail__scroll">
-              <table className="ent-grid-table">
-                <tbody>
-                  <tr>
-                    <th>
-                      {lang === "kz"
-                        ? "Тест тапсырмасының реті"
-                        : "Номер задания"}
-                    </th>
-                    {numbers.map((n, i) => (
-                      <td key={`n-${n}`}>{i + 1}</td>
-                    ))}
-                  </tr>
-                  <tr>
-                    <th>
-                      {lang === "kz" ? "Сіздің жауабыңыз" : "Ваш ответ"}
-                    </th>
-                    {numbers.map((n) => (
-                      <td key={`a-${n}`}>{section.answerLabels[n] || ""}</td>
-                    ))}
-                  </tr>
-                  <tr>
-                    <th>
-                      {lang === "kz" ? "Тестілеу нәтижесі" : "Результат"}
-                    </th>
-                    {numbers.map((n) => (
-                      <td
-                        key={`r-${n}`}
-                        className={
-                          section.results[n]
-                            ? "ent-grid-table__ok"
-                            : (section.points?.[n] ?? 0) > 0
-                              ? "ent-grid-table__part"
-                              : "ent-grid-table__bad"
-                        }
-                      >
-                        {section.points?.[n] ?? (section.results[n] ? 1 : 0)}
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </details>
-        );
-      })}
-
-      <div className="results-page__links">
-        <Link to="/profile" className="results-page__back">
-          {lang === "kz" ? "Тарихқа қайту" : "К истории"}
-        </Link>
-      </div>
+        <div className="result-actions">
+          <Link to="/" className="v2-btn">
+            {kz ? "Тағы бір ҰБТ тапсыру" : "Пройти ЕНТ ещё раз"}
+          </Link>
+          <Link to="/profile" className="v2-btn v2-btn--quiet">
+            {kz ? "Нәтижелер тарихы" : "История результатов"}
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }

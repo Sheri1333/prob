@@ -1,33 +1,36 @@
 import { Link } from "react-router-dom";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { SiteHeader } from "../components/SiteHeader";
 import type { Lang } from "../i18n/strings";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
+import "../styles/home.css";
 
-export function NotFoundPage({ lang }: { lang: Lang }) {
-  const title = lang === "kz" ? "Бет табылмады" : "Страница не найдена";
+interface NotFoundPageProps {
+  lang: Lang;
+  onToggleLang: () => void;
+}
+
+export function NotFoundPage({ lang, onToggleLang }: NotFoundPageProps) {
+  const kz = lang === "kz";
+  const title = kz ? "Бет табылмады" : "Страница не найдена";
   useDocumentTitle(title);
 
   return (
-    <div className="page">
-      <header className="site-header">
-        <div className="site-header__brand">
-          <Link to="/" className="site-header__logo">
-            Талапкер
-          </Link>
-          <ThemeToggle />
-        </div>
-      </header>
-      <article className="legal-page">
-        <h1>404 · {title}</h1>
-        <p>
-          {lang === "kz"
-            ? "Мұндай бет жоқ немесе ол жойылған. Сілтемені тексеріңіз."
-            : "Такой страницы нет или она была удалена. Проверьте ссылку."}
+    <div className="page v2">
+      <SiteHeader lang={lang} onToggleLang={onToggleLang} />
+      <main className="not-found">
+        <p className="not-found__code" aria-hidden="true">
+          404
         </p>
-        <Link to="/" className="test-card__cta not-found__cta">
-          {lang === "kz" ? "Басты бетке" : "На главную"}
+        <h1>{title}</h1>
+        <p>
+          {kz
+            ? "Мұндай бет жоқ немесе ол жойылған. Сілтемені тексеріңіз немесе басты беттен бастаңыз."
+            : "Такой страницы нет или её удалили. Проверьте ссылку или начните с главной."}
+        </p>
+        <Link to="/" className="v2-btn">
+          {kz ? "Басты бетке" : "На главную"}
         </Link>
-      </article>
+      </main>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { SiteHeader } from "../components/SiteHeader";
 import type { Lang } from "../i18n/strings";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
+import "../styles/home.css";
 
 const COPY = {
   faq: {
@@ -29,36 +30,43 @@ const COPY = {
   },
 } as const;
 
+const ORDER = ["faq", "terms", "privacy"] as const;
+
 interface LegalPageProps {
   lang: Lang;
+  onToggleLang: () => void;
   kind: keyof typeof COPY;
 }
 
-export function LegalPage({ lang, kind }: LegalPageProps) {
+export function LegalPage({ lang, onToggleLang, kind }: LegalPageProps) {
+  const kz = lang === "kz";
   const copy = COPY[kind];
-  const title = lang === "kz" ? copy.titleKz : copy.titleRu;
-  const body = lang === "kz" ? copy.bodyKz : copy.bodyRu;
+  const title = kz ? copy.titleKz : copy.titleRu;
+  const body = kz ? copy.bodyKz : copy.bodyRu;
   useDocumentTitle(title);
 
   return (
-    <div className="page">
-      <header className="site-header">
-        <div className="site-header__brand">
-          <Link to="/" className="site-header__logo">
-            Талапкер
-          </Link>
-          <ThemeToggle />
-        </div>
-        <nav className="site-header__nav">
-          <Link to="/" className="header-btn header-btn--ghost">
-            {lang === "kz" ? "Басты бет" : "На главную"}
-          </Link>
+    <div className="page v2">
+      <SiteHeader lang={lang} onToggleLang={onToggleLang}>
+        <Link to="/">{kz ? "Басты бет" : "Главная"}</Link>
+      </SiteHeader>
+      <div className="doc-layout">
+        <nav className="doc-nav" aria-label={kz ? "Құжаттар" : "Документы"}>
+          {ORDER.map((k) => (
+            <Link
+              key={k}
+              to={`/${k}`}
+              aria-current={k === kind ? "page" : undefined}
+            >
+              {kz ? COPY[k].titleKz : COPY[k].titleRu}
+            </Link>
+          ))}
         </nav>
-      </header>
-      <article className="legal-page">
-        <h1>{title}</h1>
-        <p>{body}</p>
-      </article>
+        <article className="doc">
+          <h1>{title}</h1>
+          <p>{body}</p>
+        </article>
+      </div>
     </div>
   );
 }

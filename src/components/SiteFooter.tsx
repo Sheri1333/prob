@@ -44,65 +44,47 @@ export function SiteFooter({ lang }: { lang: Lang }) {
   const kz = lang === "kz";
 
   return (
-    <footer className="site-footer">
-      <section className="site-footer__block">
-        <h2 className="landing-section-title">
-          {kz ? "Талапкер әлеуметтік желіде" : "Талапкер в соцсетях"}
-        </h2>
+    <footer className="v2-footer">
+      <section>
+        <h2>{kz ? "Талапкер әлеуметтік желіде" : "Талапкер в соцсетях"}</h2>
         <p>
           {kz
-            ? "Instagram-да акциялар мен жеңілдіктерді жариялаймыз, белсенді қолданушыларға бонус береміз. Жазылып қойыңыз."
-            : "В Instagram выкладываем акции и скидки, а активным пользователям даём бонусы. Подписывайтесь."}
+            ? "Instagram-да акциялар мен жеңілдіктерді жариялаймыз, белсенді қолданушыларға бонус береміз."
+            : "В Instagram выкладываем акции и скидки, а активным пользователям даём бонусы."}
         </p>
-        <div className="site-social">
-          <a
-            className="site-social__ig"
-            href={SOCIAL.instagram}
-            aria-label="Instagram"
-          >
+        <div className="v2-footer__social">
+          <a href={SOCIAL.instagram} aria-label="Instagram">
             <InstagramIcon />
           </a>
-          <a className="site-social__x" href={SOCIAL.x} aria-label="X">
+          <a href={SOCIAL.x} aria-label="X">
             <XIcon />
           </a>
-          <a
-            className="site-social__wa"
-            href={SOCIAL.whatsapp}
-            aria-label="WhatsApp"
-          >
+          <a href={SOCIAL.whatsapp} aria-label="WhatsApp">
             <WhatsAppIcon />
           </a>
         </div>
       </section>
 
-      <section className="site-footer__block">
-        <h2 className="landing-section-title">
-          {kz ? "Сұрақтарыңыз қалды ма?" : "Остались вопросы?"}
-        </h2>
-        <p>
-          {kz
-            ? "Жаңа қолданушылар жиі сұрайтын нәрселерді бір жерге жинадық. Жауап таппасаңыз, бізге жазыңыз."
-            : "Собрали вопросы, которые чаще всего задают новички. Если ответа там нет, напишите нам."}
-        </p>
-        <div className="site-legal">
-          <Link to="/faq">
-            <span>{kz ? "Жиі қойылатын сұрақтар" : "Частые вопросы"}</span>
-            <span className="material-symbols-outlined">help</span>
-          </Link>
-          <Link to="/terms">
-            <span>
+      <section>
+        <h2>{kz ? "Сұрақтарыңыз қалды ма?" : "Остались вопросы?"}</h2>
+        <ul className="v2-footer__links">
+          <li>
+            <Link to="/faq">{kz ? "Жиі қойылатын сұрақтар" : "Частые вопросы"}</Link>
+          </li>
+          <li>
+            <Link to="/terms">
               {kz ? "Пайдаланушы келісімі" : "Пользовательское соглашение"}
-            </span>
-            <span className="material-symbols-outlined">contract</span>
-          </Link>
-          <Link to="/privacy">
-            <span>
+            </Link>
+          </li>
+          <li>
+            <Link to="/privacy">
               {kz ? "Құпиялылық саясаты" : "Политика конфиденциальности"}
-            </span>
-            <span className="material-symbols-outlined">verified_user</span>
-          </Link>
-        </div>
+            </Link>
+          </li>
+        </ul>
       </section>
+
+      <p className="v2-footer__copy">© {new Date().getFullYear()} Талапкер</p>
     </footer>
   );
 }

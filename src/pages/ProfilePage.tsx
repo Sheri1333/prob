@@ -3,23 +3,23 @@ import { Link, Navigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { ThemeToggle } from "../components/ThemeToggle";
-import { t } from "../i18n/strings";
+import { SiteHeader } from "../components/SiteHeader";
 import type { Lang } from "../i18n/strings";
 import { entScoreToGrade } from "../utils/testUtils";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
+import "../styles/home.css";
 
 interface ProfilePageProps {
   lang: Lang;
+  onToggleLang: () => void;
 }
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+/** Position on the 0–140 ҰБТ scale as a CSS percentage. */
+function onScale(grade: number): string {
+  return `${(Math.min(140, Math.max(0, grade)) / 140) * 100}%`;
 }
 
-export function ProfilePage({ lang }: ProfilePageProps) {
+export function ProfilePage({ lang, onToggleLang }: ProfilePageProps) {
   useDocumentTitle("Профиль");
   const { user, loading, isAdmin, logout } = useAuth();
   const [sessions, setSessions] = useState<
@@ -47,170 +47,177 @@ export function ProfilePage({ lang }: ProfilePageProps) {
       grades.reduce((sum, g) => sum + g, 0) / grades.length,
     );
     const bestGrade = Math.max(...grades);
-    return { count: sessions.length, avgGrade, bestGrade };
+    return {
+      count: sessions.length,
+      grades,
+      avgGrade,
+      bestGrade,
+      bestIndex: grades.indexOf(bestGrade),
+    };
   }, [sessions]);
 
   if (loading) return <div className="page page--center">Загрузка...</div>;
   if (!user) return <Navigate to="/login" replace state={{ from: "/profile" }} />;
 
-  return (
-    <div className="page">
-      <header className="site-header">
-        <div className="site-header__brand">
-          <Link to="/" className="site-header__logo">
-            Талапкер
-          </Link>
-          <ThemeToggle />
-        </div>
-        <nav className="site-header__nav">
-          {isAdmin && (
-            <Link to="/admin" className="header-btn header-btn--ghost">
-              Админка
-            </Link>
-          )}
-          <Link to="/" className="header-btn header-btn--ghost">
-            {lang === "kz" ? "Каталог" : "Каталог"}
-          </Link>
-          <button
-            type="button"
-            className="link-btn"
-            onClick={() => setConfirmLogout(true)}
-          >
-            {lang === "kz" ? "Шығу" : "Выйти"}
-          </button>
-        </nav>
-      </header>
+  const kz = lang === "kz";
+  const formatDate = (iso: string) => new Date(iso).toLocaleDateString("ru-RU");
 
-      <section className="profile-head">
-        <div className="profile-avatar">{initials(user.name)}</div>
-        <div>
-          <h1 className="profile-name">{user.name}</h1>
-          <p className="profile-email">{user.email}</p>
-        </div>
-        <span
-          className={`role-badge ${isAdmin ? "role-badge--admin" : "role-badge--user"}`}
-        >
-          {isAdmin
-            ? lang === "kz"
-              ? "Админ"
-              : "Админ"
-            : lang === "kz"
-              ? "Оқушы"
-              : "Ученик"}
-        </span>
+  const resendVerify = () => {
+    setVerifyBusy(true);
+    api
+      .resendVerify()
+      .then(() => setVerifyNotice(kz ? "Хат жіберілді." : "Письмо отправлено."))
+      .catch((e) => setError(e instanceof Error ? e.message : "Ошибка"))
+      .finally(() => setVerifyBusy(false));
+  };
+
+  return (
+    <div className="page v2">
+      <SiteHeader lang={lang} onToggleLang={onToggleLang}>
+        {isAdmin && <Link to="/admin">{kz ? "Әкімші" : "Админка"}</Link>}
+        <Link to="/">{kz ? "Басты бет" : "Главная"}</Link>
+        <button type="button" onClick={() => setConfirmLogout(true)}>
+          {kz ? "Шығу" : "Выйти"}
+        </button>
+      </SiteHeader>
+
+      <section className="v2-profile-head">
+        <h1>
+          {user.name}
+          {isAdmin && <span className="v2-tag">{kz ? "Әкімші" : "Админ"}</span>}
+        </h1>
+        <p>{user.email}</p>
       </section>
 
       {user.emailVerified === false && (
-        <p className="auth-card__notice" style={{ margin: "0 0 1rem" }}>
-          {lang === "kz"
-            ? "Email әлі расталмаған. Нәтиже мен парольді қалпына келтіру үшін растаңыз."
+        <p className="v2-notice">
+          {kz
+            ? "Email әлі расталмаған. Нәтижелерді алу және парольді қалпына келтіру үшін поштаңызды растаңыз."
             : "Email ещё не подтверждён. Подтвердите почту, чтобы получать результаты и сбрасывать пароль."}{" "}
-          <button
-            type="button"
-            className="link-btn"
-            disabled={verifyBusy}
-            onClick={() => {
-              setVerifyBusy(true);
-              api
-                .resendVerify()
-                .then(() =>
-                  setVerifyNotice(
-                    lang === "kz" ? "Хат жіберілді" : "Письмо отправлено",
-                  ),
-                )
-                .catch((e) =>
-                  setError(e instanceof Error ? e.message : "Ошибка"),
-                )
-                .finally(() => setVerifyBusy(false));
-            }}
-          >
-            {verifyBusy
-              ? "..."
-              : lang === "kz"
-                ? "Қайта жіберу"
-                : "Отправить ещё раз"}
-          </button>
-          {verifyNotice ? ` · ${verifyNotice}` : ""}
+          {verifyNotice ? (
+            <strong>{verifyNotice}</strong>
+          ) : (
+            <button
+              type="button"
+              className="link-btn"
+              disabled={verifyBusy}
+              onClick={resendVerify}
+            >
+              {verifyBusy
+                ? kz
+                  ? "Жіберілуде…"
+                  : "Отправляем…"
+                : kz
+                  ? "Хатты қайта жіберу"
+                  : "Отправить письмо ещё раз"}
+            </button>
+          )}
         </p>
       )}
 
-      {error && <p className="auth-card__error">{error}</p>}
+      {error && <p className="v2-error">{error}</p>}
 
-      <section className="profile-stats">
-        <div className="profile-stat">
-          <strong>{stats ? stats.count : loadingAttempts ? "…" : 0}</strong>
-          <span>{lang === "kz" ? "Өткен сессиялар" : "Пройдено сессий"}</span>
-        </div>
-        <div className="profile-stat">
-          <strong>{stats ? stats.avgGrade : "—"}</strong>
-          <span>{lang === "kz" ? "Орташа балл (ҰБТ)" : "Средний балл (ЕНТ)"}</span>
-        </div>
-        <div className="profile-stat">
-          <strong>{stats ? stats.bestGrade : "—"}</strong>
-          <span>{lang === "kz" ? "Үздік балл (ҰБТ)" : "Лучший балл (ЕНТ)"}</span>
-        </div>
-      </section>
-
-      <section className="profile-history">
-        <h2>{lang === "kz" ? "ҰБТ тарихы" : "История ЕНТ"}</h2>
-        {loadingAttempts ? (
-          <p>Загрузка...</p>
-        ) : sessions.length === 0 ? (
-          <p className="admin-empty">
-            {lang === "kz" ? "Әзірге өткен ҰБТ жоқ." : "Пока нет прохождений ЕНТ."}{" "}
-            <Link to="/">
-              {lang === "kz" ? "Пробный бастау" : "Начать пробный"}
-            </Link>
-          </p>
-        ) : (
-          <div className="profile-history__list">
-            {sessions.map((a) => {
-              const grade = entScoreToGrade(a.score, a.maxScore);
-              return (
-                <Link
-                  key={a.sessionId}
-                  to={`/exam/results/${a.sessionId}`}
-                  className="profile-history__item"
-                >
-                  <div className="profile-history__info">
-                    <strong>{lang === "kz" ? "ҰБТ" : "ЕНТ"}</strong>
-                    <span>
-                      {a.sectionCount}{" "}
-                      {lang === "kz" ? "бөлім" : "разделов"} ·{" "}
-                      {new Date(a.finishedAt).toLocaleDateString("ru-RU")}
-                    </span>
-                  </div>
-                  <div className="profile-history__score">
-                    <span
-                      className={`profile-history__percent ${
-                        grade >= 70
-                          ? "profile-history__percent--ok"
-                          : "profile-history__percent--low"
-                      }`}
-                    >
-                      {grade} {t("entGrade", lang)}
-                    </span>
-                    <span className="profile-history__meta">
-                      {a.score}/{a.maxScore}
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
+      {stats && (
+        <dl className="score-summary">
+          <div className="score-summary__best">
+            <dt>{kz ? "Үздік балл" : "Лучший балл"}</dt>
+            <dd>
+              {stats.bestGrade}
+              <small>/ 140</small>
+            </dd>
           </div>
+          <div>
+            <dt>{kz ? "Орташа балл" : "Средний балл"}</dt>
+            <dd>{stats.avgGrade}</dd>
+          </div>
+          <div>
+            <dt>{kz ? "Тапсырылған ҰБТ" : "Пройдено ЕНТ"}</dt>
+            <dd>{stats.count}</dd>
+          </div>
+        </dl>
+      )}
+
+      <section className="v2-section">
+        <h2>{kz ? "ҰБТ тарихы" : "История ЕНТ"}</h2>
+        {loadingAttempts ? (
+          <p className="v2-section__intro">{kz ? "Жүктелуде…" : "Загрузка…"}</p>
+        ) : !stats ? (
+          <div className="history-empty">
+            <p>
+              {kz
+                ? "Әзірге тапсырылған ҰБТ жоқ. Алғашқы сынақтан кейін әр нәтиже осында 140 балдық шкалада көрінеді."
+                : "Пока нет пройденных ЕНТ. После первого пробника каждый результат появится здесь на шкале из 140 баллов."}
+            </p>
+            <Link to="/" className="v2-btn">
+              {kz ? "Тегін ҰБТ тапсыру" : "Пройти ЕНТ бесплатно"}
+            </Link>
+          </div>
+        ) : (
+          <>
+            <ol className="history">
+              <li className="history__axis" aria-hidden="true">
+                <div className="history__axis-scale">
+                  <span>0</span>
+                  <span>70</span>
+                  <span>140</span>
+                </div>
+              </li>
+              {sessions.map((a, i) => {
+                const grade = stats.grades[i];
+                const isBest = i === stats.bestIndex;
+                return (
+                  <li key={a.sessionId}>
+                    <Link
+                      to={`/exam/results/${a.sessionId}`}
+                      className={`history__row${isBest ? " history__row--best" : ""}`}
+                      aria-label={`${formatDate(a.finishedAt)}: ${grade} / 140`}
+                    >
+                      <span className="history__date">
+                        {formatDate(a.finishedAt)}{" "}
+                        <span>
+                          {a.sectionCount} {kz ? "пән" : "предм."}
+                        </span>
+                      </span>
+                      <span className="history__track">
+                        <span
+                          className="history__fill"
+                          style={{ width: onScale(grade) }}
+                        />
+                        {stats.count > 1 && (
+                          <span
+                            className="history__avg"
+                            style={{ left: onScale(stats.avgGrade) }}
+                          />
+                        )}
+                      </span>
+                      <span className="history__score">{grade}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ol>
+            {stats.count > 1 && (
+              <p className="history__legend">
+                <i />
+                {kz
+                  ? `орташа балл, ${stats.avgGrade}. Сары жолақ — үздік нәтиже.`
+                  : `средний балл, ${stats.avgGrade}. Жёлтая полоса — лучший результат.`}
+              </p>
+            )}
+          </>
         )}
       </section>
 
       {confirmLogout && (
         <ConfirmDialog
-          title={lang === "kz" ? "Аккаунттан шығу" : "Выйти из аккаунта"}
+          title={kz ? "Аккаунттан шығу" : "Выйти из аккаунта"}
           message={
-            lang === "kz"
+            kz
               ? "Аккаунттан шыққыңыз келетініне сенімдісіз бе?"
               : "Вы уверены, что хотите выйти из аккаунта?"
           }
-          confirmLabel={lang === "kz" ? "Шығу" : "Выйти"}
-          cancelLabel={lang === "kz" ? "Болдырмау" : "Отмена"}
+          confirmLabel={kz ? "Шығу" : "Выйти"}
+          cancelLabel={kz ? "Болдырмау" : "Отмена"}
           danger
           onCancel={() => setConfirmLogout(false)}
           onConfirm={() => {

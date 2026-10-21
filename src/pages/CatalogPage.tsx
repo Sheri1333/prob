@@ -1,107 +1,36 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type EntPricing } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
-import { AnimatedNumber } from "../components/AnimatedNumber";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SiteFooter } from "../components/SiteFooter";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { ToastHost, useToasts } from "../components/Toast";
 import { translateSubject } from "../i18n/subjects";
 import type { Lang } from "../i18n/strings";
-import { t } from "../i18n/strings";
 import { loadExamDraft } from "../utils/examDraft";
 import { useDocumentTitle } from "../utils/useDocumentTitle";
+import "../styles/home.css";
 
 interface CatalogPageProps {
   lang: Lang;
   onToggleLang: () => void;
 }
 
-function setupScrollReveal(root: HTMLElement): () => void {
-  const els = [...root.querySelectorAll<HTMLElement>(".reveal")];
-  if (els.length === 0) return () => {};
-
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    for (const el of els) el.classList.add("is-visible", "is-shown");
-    return () => {};
-  }
-
-  const groups = new Map<Element, HTMLElement[]>();
-  for (const el of els) {
-    const parent = el.parentElement ?? root;
-    const list = groups.get(parent) ?? [];
-    list.push(el);
-    groups.set(parent, list);
-  }
-  for (const siblings of groups.values()) {
-    siblings.forEach((el, i) => {
-      el.style.setProperty("--reveal-delay", `${Math.min(i, 5) * 80}ms`);
-    });
-  }
-
-  const finish = (el: HTMLElement) => {
-    el.classList.add("is-shown");
-  };
-
-  const reveal = (el: HTMLElement) => {
-    if (el.classList.contains("is-visible")) return;
-    el.classList.add("is-visible");
-    const onEnd = (event: AnimationEvent) => {
-      if (event.target !== el) return;
-      if (
-        event.animationName !== "reveal-in" &&
-        event.animationName !== "reveal-in-title"
-      ) {
-        return;
-      }
-      el.removeEventListener("animationend", onEnd);
-      finish(el);
-    };
-    el.addEventListener("animationend", onEnd);
-    const delay = Number.parseFloat(el.style.getPropertyValue("--reveal-delay")) || 0;
-    window.setTimeout(() => finish(el), delay + 850);
-  };
-
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        reveal(entry.target as HTMLElement);
-        observer.unobserve(entry.target);
-      }
-    },
-    { threshold: 0.12, rootMargin: "0px 0px 12% 0px" },
-  );
-
-  const viewportBottom = window.innerHeight;
-  const pending: HTMLElement[] = [];
-  for (const el of els) {
-    const top = el.getBoundingClientRect().top;
-    if (top < viewportBottom - 48) {
-      pending.push(el);
-    } else {
-      observer.observe(el);
-    }
-  }
-
-  const playPending = () => {
-    for (const el of pending) reveal(el);
-  };
-  const raf = window.requestAnimationFrame(playPending);
-
-  return () => {
-    window.cancelAnimationFrame(raf);
-    observer.disconnect();
-  };
-}
+/** Official ҰБТ point split: 20 + 10 + 10 + 50 + 50 = 140. */
+const ENT_BLOCKS = [
+  { points: 20, profile: false, kz: "Қазақстан тарихы", ru: "История Казахстана" },
+  { points: 10, profile: false, kz: "Оқу сауаттылығы", ru: "Грамотность чтения" },
+  { points: 10, profile: false, kz: "Математикалық сауаттылық", ru: "Математическая грамотность" },
+  { points: 50, profile: true, kz: "1-бейіндік пән", ru: "Профильный предмет 1" },
+  { points: 50, profile: true, kz: "2-бейіндік пән", ru: "Профильный предмет 2" },
+];
 
 export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
   useDocumentTitle();
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
-  const pageRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [blueprint, setBlueprint] = useState<Awaited<
     ReturnType<typeof api.getExamBlueprint>
@@ -151,12 +80,6 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
     };
   }, []);
 
-  useLayoutEffect(() => {
-    const root = pageRef.current;
-    if (!root) return;
-    return setupScrollReveal(root);
-  }, []);
-
   const openFreePlan = () => {
     if (!user) {
       navigate("/login", { state: { from: "/", notice: "pricing" } });
@@ -202,8 +125,11 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
     navigate(activeSessionId ? `/exam/${activeSessionId}` : "/exam");
   };
 
-  const resume = activeSessionId;
+  const scrollToPlans = () => {
+    document.getElementById("plans")?.scrollIntoView({ behavior: "smooth" });
+  };
 
+  const kz = lang === "kz";
   const sessionMinutes = blueprint?.durationMinutes ?? 240;
   const comboCount = blueprint?.combinations.length ?? 17;
   const bundleSavings = Math.max(
@@ -211,94 +137,154 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
     pricing.singlePriceTenge * 3 - pricing.bundlePriceTenge,
   );
   const formatTenge = (n: number) =>
-    pricingData ? `${n.toLocaleString("ru-RU")} ₸` : "— ₸";
+    pricingData ? `${n.toLocaleString("ru-RU")} ₸` : "… ₸";
 
   return (
-    <div className="page" ref={pageRef}>
-      <header className="site-header">
+    <div className="page v2">
+      <header className="v2-header">
         <div className="site-header__brand">
           <div className="site-header__logo">Талапкер</div>
           <ThemeToggle />
         </div>
-        <nav className="site-header__nav">
+        <nav className="v2-nav">
           <button
             type="button"
-            className="header-btn header-btn--ghost header-btn--lang"
+            className="v2-nav__lang"
             onClick={onToggleLang}
-            aria-label={lang === "kz" ? "Тілді ауыстыру" : "Сменить язык"}
+            aria-label={kz ? "Тілді ауыстыру" : "Сменить язык"}
           >
-            {lang === "kz" ? "РУС" : "ҚАЗ"}
+            {kz ? "Рус" : "Қаз"}
           </button>
           {user ? (
             <>
               {isAdmin && (
-                <Link to="/admin" className="header-btn header-btn--ghost">
-                  {lang === "kz" ? "Әкімші" : "Админка"}
-                </Link>
+                <Link to="/admin">{kz ? "Әкімші" : "Админка"}</Link>
               )}
-              <Link to="/profile" className="site-header__user">
-                {user.name}
-              </Link>
-              <button
-                type="button"
-                className="link-btn"
-                onClick={() => setConfirmLogout(true)}
-              >
-                {lang === "kz" ? "Шығу" : "Выйти"}
+              <Link to="/profile">{user.name}</Link>
+              <button type="button" onClick={() => setConfirmLogout(true)}>
+                {kz ? "Шығу" : "Выйти"}
               </button>
             </>
           ) : (
             <>
-              <Link to="/login" className="header-btn header-btn--ghost">
-                {lang === "kz" ? "Кіру" : "Войти"}
-              </Link>
-              <Link to="/register" className="header-btn header-btn--primary">
-                {lang === "kz" ? "Тіркелу" : "Регистрация"}
+              <Link to="/login">{kz ? "Кіру" : "Войти"}</Link>
+              <Link to="/register" className="v2-nav__primary">
+                {kz ? "Тіркелу" : "Регистрация"}
               </Link>
             </>
           )}
         </nav>
       </header>
 
-      <section className="hero">
-        <div className="hero__copy">
-          <h1>
-            {user
-              ? lang === "kz"
-                ? `Сәлем, ${user.name.split(/\s+/)[0]}!`
-                : `Привет, ${user.name.split(/\s+/)[0]}!`
-              : lang === "kz"
-                ? "ҰБТ-ға онлайн дайындық"
-                : "Онлайн-подготовка к ЕНТ"}
-          </h1>
-          <p>
-            {lang === "kz"
-              ? "Нағыз ҰБТ-ға дейін балыңды біліп ал."
-              : "Узнай свой балл до настоящего ЕНТ."}
-          </p>
-        </div>
-      </section>
-
-      {error && (
-        <p className="auth-card__error catalog-error">
-          {lang === "kz"
-            ? "Сервер уақытша қолжетімсіз. Бірнеше минуттан кейін бетті жаңартыңыз."
-            : "Сервер временно недоступен. Обновите страницу через пару минут."}
+      <section className="v2-hero">
+        <h1>
+          {user
+            ? kz
+              ? `Сәлем, ${user.name.split(/\s+/)[0]}!`
+              : `Привет, ${user.name.split(/\s+/)[0]}!`
+            : kz
+              ? "ҰБТ-ға онлайн дайындық"
+              : "Онлайн-подготовка к ЕНТ"}
+        </h1>
+        <p className="v2-hero__lead">
+          {kz
+            ? "Толық ҰБТ-ны үйде тапсырып, нағыз емтиханға дейін балыңды біліп ал."
+            : "Пройдите полный ЕНТ дома и узнайте свой балл до настоящего экзамена."}
         </p>
-      )}
-
-      {resume && (
-        <div className="ent-resume">
-          <p>
-            {lang === "kz"
-              ? "Аяқталмаған сессия бар"
-              : "Есть незавершённая сессия"}
-          </p>
-          <button type="button" className="test-card__cta" onClick={resumeExam}>
-            {lang === "kz" ? "Жалғастыру" : "Продолжить"}
-          </button>
+        <div className="v2-hero__actions">
+          {pricing.trialEnabled ? (
+            <>
+              <button type="button" className="v2-btn" onClick={openFreePlan}>
+                {kz ? "Тегін ҰБТ тапсыру" : "Пройти ЕНТ бесплатно"}
+              </button>
+              <span className="v2-hero__note">
+                {kz ? "Бір рет, төлемсіз" : "Один раз, без оплаты"}
+              </span>
+            </>
+          ) : (
+            <button type="button" className="v2-btn" onClick={scrollToPlans}>
+              {kz ? "Тарифті таңдау" : "Выбрать тариф"}
+            </button>
+          )}
         </div>
-      )}
+
+        {activeSessionId && (
+          <div className="v2-resume">
+            <p>
+              {kz
+                ? "Сізде аяқталмаған ҰБТ бар."
+                : "У вас есть незавершённый ЕНТ."}
+            </p>
+            <button
+              type="button"
+              className="v2-btn v2-btn--quiet"
+              onClick={resumeExam}
+            >
+              {kz ? "Жалғастыру" : "Продолжить"}
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <p className="v2-error" style={{ marginTop: "1.5rem" }}>
+            {kz
+              ? "Сервер уақытша қолжетімсіз. Бірнеше минуттан кейін бетті жаңартыңыз."
+              : "Сервер временно недоступен. Обновите страницу через пару минут."}
+          </p>
+        )}
+
+        <figure className="ent-scale">
+          <figcaption className="ent-scale__caption">
+            {kz ? (
+              <>
+                <strong>Сынақ нағыз ҰБТ-мен бірдей:</strong> 5 пән, 140 балл,{" "}
+                {sessionMinutes} минут.
+              </>
+            ) : (
+              <>
+                <strong>Пробник устроен как настоящий ЕНТ:</strong> 5 предметов,
+                140 баллов, {sessionMinutes} минут.
+              </>
+            )}
+          </figcaption>
+          <div className="ent-scale__bar" aria-hidden="true">
+            {ENT_BLOCKS.map((b) => (
+              <div
+                key={b.ru}
+                className={`ent-scale__seg${b.profile ? " ent-scale__seg--profile" : ""}`}
+                style={{ flexGrow: b.points }}
+                title={`${kz ? b.kz : b.ru}: ${b.points}`}
+              >
+                {b.points}
+              </div>
+            ))}
+          </div>
+          <div className="ent-scale__ticks" aria-hidden="true">
+            <span>0</span>
+            <span>140</span>
+          </div>
+          <div className="ent-scale__key">
+            <div className="ent-scale__group">
+              <h3>{kz ? "Міндетті пәндер, 40 балл" : "Обязательные, 40 баллов"}</h3>
+              <ul>
+                {ENT_BLOCKS.filter((b) => !b.profile).map((b) => (
+                  <li key={b.ru}>
+                    {kz ? b.kz : b.ru}, {b.points}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="ent-scale__group ent-scale__group--profile">
+              <h3>{kz ? "Бейіндік пәндер, 100 балл" : "Профильные, 100 баллов"}</h3>
+              <p>
+                {kz
+                  ? `Екі пән, әрқайсысы 50 балл. ${comboCount} комбинацияның кез келгенін таңдауға болады.`
+                  : `Два предмета по 50 баллов. Можно выбрать любую из ${comboCount} комбинаций.`}
+              </p>
+            </div>
+          </div>
+        </figure>
+      </section>
 
       {comboModalOpen &&
         blueprint &&
@@ -310,12 +296,13 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
             <div className="combo-modal" onClick={(e) => e.stopPropagation()}>
               <div className="combo-modal__head">
                 <h3>
-                  {lang === "kz"
+                  {kz
                     ? "Бейіндік пәндерді таңдаңыз"
                     : "Выберите профильные предметы"}
                 </h3>
                 <button
                   type="button"
+                  aria-label={kz ? "Жабу" : "Закрыть"}
                   onClick={() => setComboModalOpen(false)}
                 >
                   <span className="material-symbols-outlined">close</span>
@@ -330,15 +317,11 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
                     className="combo-modal__item"
                     onClick={() => pickCombo(c.id, c.ready)}
                   >
-                    <strong>{lang === "kz" ? c.labelKz : c.labelRu}</strong>
+                    <strong>{kz ? c.labelKz : c.labelRu}</strong>
                     <span>
                       {translateSubject(c.subject1, lang)} +{" "}
                       {translateSubject(c.subject2, lang)}
-                      {!c.ready
-                        ? lang === "kz"
-                          ? " · тест жоқ"
-                          : " · нет теста"
-                        : ""}
+                      {!c.ready ? (kz ? ", тест жоқ" : ", нет теста") : ""}
                     </span>
                   </button>
                 ))}
@@ -348,285 +331,151 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
           document.body,
         )}
 
-      <section className="pricing">
-        <h2 className="landing-section-title reveal reveal--title">
-          {lang === "kz" ? "Тарифтер" : "Тарифы"}
-        </h2>
-        <div className="pricing__grid">
+      <section className="v2-section" id="plans">
+        <h2>{kz ? "Тарифтер" : "Тарифы"}</h2>
+        <ul className="plans">
           {pricing.trialEnabled && (
-            <div className="pricing-card reveal">
-              <div className="pricing-card__inner">
-                <h3 className="pricing-card__name">
-                  {lang === "kz" ? "Тегін сынақ" : "Бесплатный пробник"}
-                </h3>
-                <div className="pricing-card__price">0 ₸</div>
-                <ul className="pricing-card__list">
-                  <li className="ok">
-                    <span className="material-symbols-outlined">check_circle</span>
-                    {lang === "kz" ? "Толық ҰБТ бір рет" : "Полный ЕНТ один раз"}
-                  </li>
-                  <li className="ok">
-                    <span className="material-symbols-outlined">check_circle</span>
-                    {lang === "kz"
-                      ? "Барлық бейіндік комбинациялар"
-                      : "Все профильные комбинации"}
-                  </li>
-                  <li className="ok">
-                    <span className="material-symbols-outlined">check_circle</span>
-                    {lang === "kz"
-                      ? `Сессия — ${sessionMinutes} ${t("minutes", lang)}`
-                      : `Сессия — ${sessionMinutes} ${t("minutes", lang)}`}
-                  </li>
-                </ul>
-                <button
-                  type="button"
-                  className="test-card__cta pricing-card__cta"
-                  onClick={openFreePlan}
-                >
-                  {lang === "kz" ? "Бастау" : "Начать"}
-                </button>
-              </div>
-            </div>
+            <li className="plan">
+              <h3 className="plan__name">
+                {kz ? "Тегін сынақ" : "Бесплатный пробник"}
+              </h3>
+              <p className="plan__desc">
+                {kz
+                  ? "Толық ҰБТ бір рет, кез келген бейіндік комбинациямен."
+                  : "Полный ЕНТ один раз, с любой профильной комбинацией."}
+              </p>
+              <span className="plan__price">0 ₸</span>
+              <button
+                type="button"
+                className="v2-btn v2-btn--quiet"
+                onClick={openFreePlan}
+              >
+                {kz ? "Бастау" : "Начать"}
+              </button>
+            </li>
           )}
-
-          <div className="pricing-card reveal">
-            <div className="pricing-card__inner">
-              <h3 className="pricing-card__name">
-                {lang === "kz" ? "Толық ҰБТ" : "Полный ЕНТ"}
-              </h3>
-              <div className="pricing-card__price">
-                {formatTenge(pricing.singlePriceTenge)}
-              </div>
-              <ul className="pricing-card__list">
-                <li className="ok">
-                  <span className="material-symbols-outlined">check_circle</span>
-                  {lang === "kz" ? "Бір толық сессия" : "Одна полная сессия"}
-                </li>
-                <li className="ok">
-                  <span className="material-symbols-outlined">check_circle</span>
-                  {lang === "kz"
-                    ? "Нәтиже және қате талдауы"
-                    : "Результат и разбор ошибок"}
-                </li>
-              </ul>
-              <button
-                type="button"
-                className="test-card__cta pricing-card__cta"
-                onClick={buySoon}
-              >
-                {lang === "kz" ? "Сатып алу" : "Купить"}
-              </button>
-            </div>
-          </div>
-
-          <div className="pricing-card pricing-card--featured reveal">
-            <span className="pricing-card__ribbon">
-              {lang === "kz" ? "Тиімді" : "Выгодно"}
+          <li className="plan">
+            <h3 className="plan__name">{kz ? "Толық ҰБТ" : "Полный ЕНТ"}</h3>
+            <p className="plan__desc">
+              {kz
+                ? "Бір сессия. Соңында балл және әр қатенің талдауы."
+                : "Одна сессия. В конце балл и разбор каждой ошибки."}
+            </p>
+            <span className="plan__price">
+              {formatTenge(pricing.singlePriceTenge)}
             </span>
-            <div className="pricing-card__inner">
-              <h3 className="pricing-card__name">
-                {lang === "kz" ? "3 толық ҰБТ" : "3 полных ЕНТ"}
-              </h3>
-              <div className="pricing-card__price">
-                {formatTenge(pricing.bundlePriceTenge)}
-              </div>
-              <ul className="pricing-card__list">
-                <li className="ok">
-                  <span className="material-symbols-outlined">check_circle</span>
-                  {bundleSavings > 0
-                    ? lang === "kz"
-                      ? `Жеке алғаннан ${formatTenge(bundleSavings)} арзан`
-                      : `Дешевле на ${formatTenge(bundleSavings)}, чем по одному`
-                    : lang === "kz"
-                      ? "Үш толық сессия"
-                      : "Три полные сессии"}
-                </li>
-                <li className="ok">
-                  <span className="material-symbols-outlined">check_circle</span>
-                  {lang === "kz"
-                    ? "Қайта тапсырып, баллды өсіріңіз"
-                    : "Пересдайте и поднимите балл"}
-                </li>
-              </ul>
-              <button
-                type="button"
-                className="test-card__cta pricing-card__cta"
-                onClick={buySoon}
-              >
-                {lang === "kz" ? "Сатып алу" : "Купить"}
-              </button>
-            </div>
-          </div>
-        </div>
+            <button
+              type="button"
+              className="v2-btn v2-btn--quiet"
+              onClick={buySoon}
+            >
+              {kz ? "Сатып алу" : "Купить"}
+            </button>
+          </li>
+          <li className="plan plan--best">
+            <h3 className="plan__name">{kz ? "3 толық ҰБТ" : "3 полных ЕНТ"}</h3>
+            <p className="plan__desc">
+              {bundleSavings > 0 && (
+                <strong>
+                  {kz
+                    ? `Жеке алғаннан ${formatTenge(bundleSavings)} арзан. `
+                    : `На ${formatTenge(bundleSavings)} дешевле, чем по одному. `}
+                </strong>
+              )}
+              {kz
+                ? "Қайта тапсырып, балл қалай өскенін көріңіз."
+                : "Пересдавайте и смотрите, как растёт балл."}
+            </p>
+            <span className="plan__price">
+              {formatTenge(pricing.bundlePriceTenge)}
+            </span>
+            <button type="button" className="v2-btn" onClick={buySoon}>
+              {kz ? "Сатып алу" : "Купить"}
+            </button>
+          </li>
+        </ul>
       </section>
 
-      <section className="landing-stats">
-        <div className="landing-stat reveal">
-          <strong>
-            <AnimatedNumber value={5} />
-          </strong>
-          <span>{lang === "kz" ? "пән бір сессияда" : "предметов за сессию"}</span>
-        </div>
-        <div className="landing-stat reveal">
-          <strong>
-            <AnimatedNumber value={sessionMinutes} />
-          </strong>
-          <span>{lang === "kz" ? "минут, нақты ҰБТ-дай" : "минут, как на ЕНТ"}</span>
-        </div>
-        <div className="landing-stat reveal">
-          <strong>
-            <AnimatedNumber value={140} />
-          </strong>
-          <span>{lang === "kz" ? "максимал балл" : "максимальный балл"}</span>
-        </div>
-        <div className="landing-stat reveal">
-          <strong>
-            <AnimatedNumber value={comboCount} />
-          </strong>
-          <span>{lang === "kz" ? "комбинация" : "комбинаций"}</span>
-        </div>
-      </section>
-
-      <section className="landing-features">
-        <h2 className="landing-section-title reveal reveal--title">
-          {lang === "kz" ? "Неге Талапкер?" : "Почему Талапкер?"}
-        </h2>
-        <div className="landing-features__grid">
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              quiz
-            </span>
-            <h3>{lang === "kz" ? "Толық ҰБТ форматы" : "Полный формат ЕНТ"}</h3>
+      <section className="v2-section">
+        <h2>{kz ? "Қалай өтеді" : "Как это проходит"}</h2>
+        <ol className="steps">
+          <li>
+            <h3>{kz ? "Пәндерді таңдаңыз" : "Выберите предметы"}</h3>
             <p>
-              {lang === "kz"
-                ? "Міндетті блоктар мен бейіндік пәндер бір сессияда, нағыз ҰБТ-дағыдай."
-                : "Обязательные блоки и профильные предметы в одной сессии, как на самом ЕНТ."}
-            </p>
-          </article>
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              timer
-            </span>
-            <h3>{lang === "kz" ? "Бүкіл тестке бір таймер" : "Один таймер на весь тест"}</h3>
-            <p>
-              {lang === "kz"
-                ? "Уақыт бүкіл тестке бірден саналады. Пәндер арасында ауыса бересіз, жауаптар жоғалмайды."
-                : "Время идёт сразу на весь тест. Между предметами можно переключаться, ответы не пропадут."}
-            </p>
-          </article>
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              calculate
-            </span>
-            <h3>
-              {lang === "kz" ? "Калькулятор мен кестелер" : "Калькулятор и таблицы"}
-            </h3>
-            <p>
-              {lang === "kz"
-                ? "Тест кезінде калькулятор мен толық Менделеев кестесі қолыңыздың астында."
-                : "Во время теста под рукой калькулятор и полная таблица Менделеева."}
-            </p>
-          </article>
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              fact_check
-            </span>
-            <h3>{lang === "kz" ? "Нәтиже бірден" : "Результат сразу"}</h3>
-            <p>
-              {lang === "kz"
-                ? "Тестті аяқтасаңыз болды, балл мен ҰБТ шкаласы бойынша баға шығады."
-                : "Как только завершите тест, увидите балл и оценку по шкале ЕНТ."}
-            </p>
-          </article>
-        </div>
-      </section>
-
-      <section className="landing-features">
-        <h2 className="landing-section-title reveal reveal--title">
-          {lang === "kz" ? "Қалай жұмыс істейді" : "Как это работает"}
-        </h2>
-        <div className="landing-features__grid landing-features__grid--wide">
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              checklist
-            </span>
-            <h3>{lang === "kz" ? "Пәндерді таңдаңыз" : "Выберите предметы"}</h3>
-            <p>
-              {lang === "kz"
+              {kz
                 ? "Екі бейіндік пәнді белгілеңіз, тест өзі құрылады."
                 : "Отметьте два профильных предмета, и тест соберётся сам."}
             </p>
-          </article>
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              play_circle
-            </span>
-            <h3>{lang === "kz" ? "Тестті тапсырыңыз" : "Пройдите тест"}</h3>
+          </li>
+          <li>
+            <h3>{kz ? "Тестті тапсырыңыз" : "Пройдите тест"}</h3>
             <p>
-              {lang === "kz"
-                ? "Сұрақтарға жауап беріп, керек кезде блоктар арасында ауысыңыз."
-                : "Отвечайте на вопросы и переключайтесь между блоками, когда нужно."}
+              {kz
+                ? `${sessionMinutes} минут бүкіл тестке. Пәндер арасында кез келген уақытта ауысуға болады.`
+                : `${sessionMinutes} минут на весь тест. Между предметами можно переключаться в любой момент.`}
             </p>
-          </article>
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              leaderboard
-            </span>
-            <h3>{lang === "kz" ? "Нәтижені көріңіз" : "Смотрите результат"}</h3>
+          </li>
+          <li>
+            <h3>{kz ? "Нәтижені көріңіз" : "Смотрите результат"}</h3>
             <p>
-              {lang === "kz"
-                ? "Балл, дұрыс жауаптар пайызы және ҰБТ шкаласы бойынша баға бірден көрінеді."
-                : "Балл, процент верных ответов и оценка по шкале ЕНТ появятся сразу."}
+              {kz
+                ? "Балл әр пән бойынша бірден шығады, қателерді сол жерде талдайсыз."
+                : "Балл по каждому предмету появится сразу, ошибки можно разобрать там же."}
             </p>
-          </article>
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              laptop_mac
-            </span>
-            <h3>{lang === "kz" ? "Тек браузер керек" : "Нужен только браузер"}</h3>
-            <p>
-              {lang === "kz"
-                ? "Ештеңе орнатудың керегі жоқ: сайтты телефоннан не компьютерден ашып, дайындала беріңіз."
-                : "Ставить ничего не надо: откройте сайт с телефона или компьютера и готовьтесь."}
-            </p>
-          </article>
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              block
-            </span>
-            <h3>{lang === "kz" ? "Жарнамасыз" : "Без рекламы"}</h3>
-            <p>
-              {lang === "kz"
-                ? "Сайтта баннерлер мен қалқымалы терезелер жоқ, ештеңе алаңдатпайды."
-                : "На сайте нет баннеров и всплывающих окон, ничего не отвлекает."}
-            </p>
-          </article>
-          <article className="landing-feature reveal">
-            <span className="material-symbols-outlined landing-feature__icon">
-              cloud_done
-            </span>
-            <h3>{lang === "kz" ? "Прогресс жоғалмайды" : "Прогресс не теряется"}</h3>
-            <p>
-              {lang === "kz"
+          </li>
+        </ol>
+      </section>
+
+      <section className="v2-section">
+        <h2>{kz ? "Тест кезінде" : "Во время теста"}</h2>
+        <dl className="facts">
+          <div>
+            <dt>{kz ? "Калькулятор мен кестелер" : "Калькулятор и таблицы"}</dt>
+            <dd>
+              {kz
+                ? "Калькулятор, Менделеев кестесі және ерігіштік кестесі қолыңыздың астында."
+                : "Под рукой калькулятор, таблица Менделеева и таблица растворимости."}
+            </dd>
+          </div>
+          <div>
+            <dt>{kz ? "Жауаптар жоғалмайды" : "Ответы не теряются"}</dt>
+            <dd>
+              {kz
                 ? "Жауаптар құрылғыда сақталады, бетті жаңартсаңыз да ештеңе өшпейді."
-                : "Ответы сохраняются на устройстве, так что после обновления страницы всё останется на месте."}
-            </p>
-          </article>
-        </div>
+                : "Ответы сохраняются на устройстве, после обновления страницы всё останется на месте."}
+            </dd>
+          </div>
+          <div>
+            <dt>{kz ? "Тек браузер керек" : "Нужен только браузер"}</dt>
+            <dd>
+              {kz
+                ? "Ештеңе орнатпайсыз: сайтты телефоннан не компьютерден ашасыз."
+                : "Ставить ничего не нужно: откройте сайт с телефона или компьютера."}
+            </dd>
+          </div>
+          <div>
+            <dt>{kz ? "Жарнама жоқ" : "Без рекламы"}</dt>
+            <dd>
+              {kz
+                ? "Баннерлер мен қалқымалы терезелер тестке кедергі жасамайды."
+                : "Баннеры и всплывающие окна не мешают проходить тест."}
+            </dd>
+          </div>
+        </dl>
       </section>
 
       <SiteFooter lang={lang} />
 
       {confirmLogout && (
         <ConfirmDialog
-          title={lang === "kz" ? "Аккаунттан шығу" : "Выйти из аккаунта"}
+          title={kz ? "Аккаунттан шығу" : "Выйти из аккаунта"}
           message={
-            lang === "kz"
+            kz
               ? "Аккаунттан шыққыңыз келетініне сенімдісіз бе?"
               : "Вы уверены, что хотите выйти из аккаунта?"
           }
-          confirmLabel={lang === "kz" ? "Шығу" : "Выйти"}
-          cancelLabel={lang === "kz" ? "Болдырмау" : "Отмена"}
+          confirmLabel={kz ? "Шығу" : "Выйти"}
+          cancelLabel={kz ? "Болдырмау" : "Отмена"}
           danger
           onCancel={() => setConfirmLogout(false)}
           onConfirm={() => {
