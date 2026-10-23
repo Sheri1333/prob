@@ -7,6 +7,8 @@
   font-family: var(--text-font);
   color: var(--ink);
   max-width: 1040px;
+  /* clip, unlike hidden, keeps position: sticky working inside the page. */
+  overflow-x: clip;
 }
 
 .v2 h1,

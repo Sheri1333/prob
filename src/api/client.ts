@@ -237,8 +237,28 @@ export const api = {
         sectionCount: number;
         startedAt: string;
         finishedAt: string;
+        profileSubjects: string[];
+        sections: Array<{
+          subject: string;
+          block: "history" | "reading" | "math_literacy" | "profile" | null;
+          score: number;
+          maxScore: number;
+        }>;
       }>;
     }>("/exams/history");
+  },
+
+  /** Variants in the bank per block/subject, and how many this student has not seen. */
+  examVariants() {
+    return request<{
+      mandatory: Array<{
+        key: string;
+        label: { kz: string; ru: string };
+        total: number;
+        fresh: number;
+      }>;
+      profile: Array<{ subject: string; total: number; fresh: number }>;
+    }>("/exams/variants");
   },
 
   examSession(sessionId: string) {

@@ -31,6 +31,13 @@ import {
 } from "../ent.js";
 import { scoreEntSection, stripAnswers, type AnswerValue } from "../scoring.js";
 import { getPricing } from "../settings.js";
+import {
+  countFresh,
+  emptyHistory,
+  markSeen,
+  pickFreshVariant,
+  type SeenHistory,
+} from "../variantPicker.js";
 import { isBrevoConfigured } from "../brevo.js";
 import { queueMail, sendExamResultEmail } from "../mail.js";
 
@@ -403,8 +410,23 @@ examsRouter.get("/history", authRequired, async (req: AuthedRequest, res) => {
     groups.set(id, list);
   }
 
+  const meta = await examSessions()
+    .find({ _id: { $in: [...groups.keys()] } })
+    .project<Pick<ExamSessionDoc, "_id" | "profileSubjects" | "sections">>({
+      profileSubjects: 1,
+      "sections.testId": 1,
+      "sections.subject": 1,
+      "sections.block": 1,
+    })
+    .toArray();
+  const metaById = new Map(meta.map((m) => [m._id, m]));
+
   const sessions = [...groups.entries()]
     .map(([sessionId, list]) => {
+      const stored = metaById.get(sessionId);
+      const sectionOf = new Map(
+        (stored?.sections ?? []).map((s) => [s.testId, s] as const),
+      );
       const score = list.reduce((sum, r) => sum + r.score, 0);
       const maxScore =
         list.reduce((sum, r) => sum + r.maxScore, 0) || ENT_TOTAL_MAX;
@@ -423,6 +445,13 @@ examsRouter.get("/history", authRequired, async (req: AuthedRequest, res) => {
         sectionCount: list.length,
         startedAt: startedAt.toISOString(),
         finishedAt: finishedAt.toISOString(),
+        profileSubjects: stored?.profileSubjects ?? [],
+        sections: list.map((r) => ({
+          subject: sectionOf.get(r.testId)?.subject ?? "",
+          block: sectionOf.get(r.testId)?.block ?? null,
+          score: r.score,
+          maxScore: r.maxScore,
+        })),
       };
     })
     .sort((a, b) => +new Date(b.finishedAt) - +new Date(a.finishedAt));
@@ -545,15 +574,78 @@ examsRouter.patch("/sessions/:sessionId", optionalAuth, async (req: AuthedReques
   );
 });
 
-function pickVariant(
-  pool: TestDoc[],
-  usedIds: Set<string>,
-): TestDoc | null {
-  if (pool.length === 0) return null;
-  const fresh = pool.filter((t) => !usedIds.has(t._id));
-  const source = fresh.length > 0 ? fresh : pool;
-  return source[Math.floor(Math.random() * source.length)] ?? null;
+
+/**
+ * Everything a student was ever shown: finished, abandoned and timed-out
+ * sessions alike, plus ids the browser remembers. Questions come from the
+ * session copy, so a test deleted or re-uploaded since still counts.
+ */
+async function loadSeenHistory(
+  userId: ObjectId | null,
+  testById: Map<string, TestDoc>,
+  rememberedIds: unknown,
+): Promise<SeenHistory> {
+  const history = emptyHistory();
+  for (const id of Array.isArray(rememberedIds) ? rememberedIds : []) {
+    if (typeof id === "string") markSeen(history, id, testById.get(id)?.questions, 0);
+  }
+  if (!userId) return history;
+  const [pastSessions, pastAttempts] = await Promise.all([
+    examSessions()
+      .find({ userId })
+      .project<Pick<ExamSessionDoc, "startedAt" | "sections">>({
+        startedAt: 1,
+        "sections.testId": 1,
+        "sections.questions.text": 1,
+        "sections.questions.context": 1,
+        "sections.questions.images": 1,
+        "sections.questions.options": 1,
+        "sections.questions.rows": 1,
+      })
+      .toArray(),
+    attempts()
+      .find({ userId })
+      .project<Pick<AttemptDoc, "testId" | "startedAt">>({ testId: 1, startedAt: 1 })
+      .toArray(),
+  ]);
+  for (const past of pastSessions) {
+    const at = past.startedAt.getTime();
+    for (const section of past.sections ?? []) {
+      markSeen(history, section.testId, section.questions, at);
+    }
+  }
+  for (const a of pastAttempts) {
+    markSeen(history, a.testId, testById.get(a.testId)?.questions, a.startedAt.getTime());
+  }
+  return history;
 }
+
+/** Per block and profile subject: variants in the bank and unseen by this student. */
+examsRouter.get("/variants", authRequired, async (req: AuthedRequest, res) => {
+  const rows = await tests().find().toArray();
+  const { byBlock, profileByKey } = groupTestsByEnt(rows);
+  const history = await loadSeenHistory(
+    new ObjectId(req.user!.id),
+    new Map(rows.map((t) => [t._id, t])),
+    [],
+  );
+  res.json({
+    mandatory: (["history", "reading", "math_literacy"] as const).map((key) => ({
+      key,
+      label: ENT_BLOCK_LABELS[key],
+      total: byBlock[key].length,
+      fresh: countFresh(byBlock[key], history),
+    })),
+    profile: [...profileByKey.values()]
+      .filter((pool) => pool.length > 0)
+      .map((pool) => ({
+        subject: pool[0].subject,
+        total: pool.length,
+        fresh: countFresh(pool, history),
+      }))
+      .sort((a, b) => a.subject.localeCompare(b.subject, "ru")),
+  });
+});
 
 examsRouter.get("/blueprint", optionalAuth, async (_req: AuthedRequest, res) => {
   const rows = await tests().find().toArray();
@@ -606,27 +698,19 @@ examsRouter.post("/start", authRequired, startLimiter, async (req: AuthedRequest
     }
   }
 
-  const used = new Set<string>(
-    (Array.isArray(body.excludeTestIds) ? body.excludeTestIds : []).filter(
-      (id): id is string => typeof id === "string",
-    ),
-  );
+  const rows = await tests().find().toArray();
+  const { byBlock, profileByKey } = groupTestsByEnt(rows);
+  const testById = new Map(rows.map((t) => [t._id, t]));
 
-  if (req.user) {
-    const userId = new ObjectId(req.user.id);
-    const past = await attempts()
-      .find({ userId })
-      .project({ testId: 1 })
-      .toArray();
-    for (const a of past) used.add(a.testId);
+  const history = await loadSeenHistory(userOid, testById, body.excludeTestIds);
+  if (userOid) {
     await examSessions().updateMany(
-      { userId, status: "in_progress" },
+      { userId: userOid, status: "in_progress" },
       { $set: { status: "abandoned" } },
     );
   }
-
-  const rows = await tests().find().toArray();
-  const { byBlock, profileByKey } = groupTestsByEnt(rows);
+  const takenNow = new Set<string>();
+  const repeats: string[] = [];
 
   const sections: Array<{
     block: EntBlockKind;
@@ -638,14 +722,16 @@ examsRouter.post("/start", authRequired, startLimiter, async (req: AuthedRequest
   }> = [];
 
   for (const key of ["history", "reading", "math_literacy"] as const) {
-    const picked = pickVariant(byBlock[key], used);
+    const choice = pickFreshVariant(byBlock[key], history, takenNow);
+    const picked = choice?.test;
     if (!picked) {
       res.status(400).json({
         error: `Нет вариантов для блока «${ENT_BLOCK_LABELS[key].ru}»`,
       });
       return;
     }
-    used.add(picked._id);
+    takenNow.add(picked._id);
+    if (choice.seenShare > 0) repeats.push(`${key}:${Math.round(choice.seenShare * 100)}%`);
     sections.push({
       block: key,
       testId: picked._id,
@@ -659,14 +745,16 @@ examsRouter.post("/start", authRequired, startLimiter, async (req: AuthedRequest
   for (const label of profileLabels) {
     const key = subjectPoolKey(label);
     const pool = profileByKey.get(key) ?? [];
-    const picked = pickVariant(pool, used);
+    const choice = pickFreshVariant(pool, history, takenNow);
+    const picked = choice?.test;
     if (!picked) {
       res.status(400).json({
         error: `Нет пробного теста для предмета «${label}». Добавьте его в админке.`,
       });
       return;
     }
-    used.add(picked._id);
+    takenNow.add(picked._id);
+    if (choice.seenShare > 0) repeats.push(`${label}:${Math.round(choice.seenShare * 100)}%`);
     sections.push({
       block: "profile",
       testId: picked._id,
@@ -675,6 +763,11 @@ examsRouter.post("/start", authRequired, startLimiter, async (req: AuthedRequest
       titleKz: picked.titleKz,
       questionCount: picked.questionCount,
     });
+  }
+
+  if (repeats.length > 0) {
+    // Out of fresh variants for these blocks: the oldest-seen one was given.
+    console.warn(`ENT start for user ${req.user?.id}: repeated variants ${repeats.join(", ")}`);
   }
 
   const questionDocs = await tests()
