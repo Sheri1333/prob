@@ -233,14 +233,14 @@ export function VerifyEmailPage({ lang, onToggleLang }: AuthPageProps) {
             </p>
           )}
           {(ok || error) && (
-            <Link to={ok ? "/" : "/profile"} className="v2-btn auth-form__submit">
+            <Link to={ok ? "/" : "/cabinet/settings"} className="v2-btn auth-form__submit">
               {ok
                 ? kz
                   ? "Басты бетке"
                   : "На главную"
                 : kz
-                  ? "Профильден хатты қайта жіберу"
-                  : "Отправить письмо ещё раз из профиля"}
+                  ? "Кабинеттен хатты қайта жіберу"
+                  : "Отправить письмо ещё раз из кабинета"}
             </Link>
           )}
         </div>

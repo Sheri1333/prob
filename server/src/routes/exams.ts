@@ -39,6 +39,7 @@ import {
   type SeenHistory,
 } from "../variantPicker.js";
 import { isBrevoConfigured } from "../brevo.js";
+import { analyzeSection } from "../analytics.js";
 import { queueMail, sendExamResultEmail } from "../mail.js";
 
 export const examsRouter = Router();
@@ -457,6 +458,82 @@ examsRouter.get("/history", authRequired, async (req: AuthedRequest, res) => {
     .sort((a, b) => +new Date(b.finishedAt) - +new Date(a.finishedAt));
 
   res.json({ sessions });
+});
+
+/**
+ * Everything the cabinet charts need: per finished exam, per section, how
+ * many questions were right, partly right, wrong or skipped, by question
+ * type and (profile subjects) by 1- and 2-point tasks. Oldest first.
+ */
+examsRouter.get("/analytics", authRequired, async (req: AuthedRequest, res) => {
+  const userId = new ObjectId(req.user!.id);
+  const rows = await attempts()
+    .find({ userId, sessionId: { $exists: true, $type: "string", $ne: "" } })
+    .sort({ finishedAt: 1 })
+    .toArray();
+  const sessionIds = [...new Set(rows.map((r) => r.sessionId as string))];
+  const [stored, testDocs] = await Promise.all([
+    examSessions()
+      .find({ _id: { $in: sessionIds } })
+      .project<Pick<ExamSessionDoc, "_id" | "profileSubjects" | "sections">>({
+        profileSubjects: 1,
+        "sections.testId": 1,
+        "sections.subject": 1,
+        "sections.block": 1,
+      })
+      .toArray(),
+    tests()
+      .find({ _id: { $in: [...new Set(rows.map((r) => r.testId))] } })
+      .toArray(),
+  ]);
+  const sessionById = new Map(stored.map((s) => [s._id, s]));
+  const testById = new Map(testDocs.map((t) => [t._id, t]));
+
+  const bySession = new Map<string, AttemptDoc[]>();
+  for (const row of rows) {
+    const list = bySession.get(row.sessionId as string) ?? [];
+    list.push(row);
+    bySession.set(row.sessionId as string, list);
+  }
+
+  const exams = [...bySession.entries()].map(([sessionId, list]) => {
+    const meta = sessionById.get(sessionId);
+    const sectionMeta = new Map((meta?.sections ?? []).map((s) => [s.testId, s] as const));
+    const startedAt = list.reduce((a, r) => (r.startedAt < a ? r.startedAt : a), list[0].startedAt);
+    const finishedAt = list.reduce((a, r) => (r.finishedAt > a ? r.finishedAt : a), list[0].finishedAt);
+    const durationMin = Math.min(
+      ENT_TOTAL_MINUTES,
+      Math.max(0, Math.round((finishedAt.getTime() - startedAt.getTime()) / 60000)),
+    );
+    const sections = list.map((r) => {
+      const info = sectionMeta.get(r.testId);
+      const test = testById.get(r.testId);
+      const block = info?.block ?? (test ? detectEntBlock(test.subject) ?? "profile" : "profile");
+      return {
+        subject: info?.subject ?? test?.subject ?? "",
+        block,
+        score: r.score,
+        maxScore: r.maxScore,
+        // A deleted test has no answer key left; its totals still count.
+        detail: test
+          ? analyzeSection(block, test.questions, r.answers as Record<string, AnswerValue>)
+          : null,
+      };
+    });
+    return {
+      sessionId,
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      durationMin,
+      profileSubjects: meta?.profileSubjects ?? [],
+      score: list.reduce((sum, r) => sum + r.score, 0),
+      maxScore: list.reduce((sum, r) => sum + r.maxScore, 0) || ENT_TOTAL_MAX,
+      sections,
+    };
+  });
+
+  exams.sort((a, b) => +new Date(a.finishedAt) - +new Date(b.finishedAt));
+  res.json({ exams });
 });
 
 examsRouter.get("/active", optionalAuth, async (req: AuthedRequest, res) => {

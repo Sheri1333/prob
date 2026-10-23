@@ -90,7 +90,7 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
     <div className="page v2">
       <SiteHeader lang={lang} onToggleLang={onToggleLang}>
         <Link to="/">{kz ? "Басты бет" : "Главная"}</Link>
-        <Link to="/profile">{kz ? "Профиль" : "Профиль"}</Link>
+        <Link to="/cabinet">{kz ? "Кабинет" : "Кабинет"}</Link>
       </SiteHeader>
 
       <section className="pay-head">
@@ -98,8 +98,8 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
         <p className="pay-head__amount">{amountText}</p>
         <p className="pay-head__note">
           {kz
-            ? `Төлем расталған соң профильге ${sessions} толық ҰБТ қосылады.`
-            : `После подтверждения оплаты в профиль добавится ${sessions === 1 ? "1 полный ЕНТ" : "3 полных ЕНТ"}.`}
+            ? `Төлем расталған соң кабинетке ${sessions} толық ҰБТ қосылады.`
+            : `После подтверждения оплаты в кабинет добавится ${sessions === 1 ? "1 полный ЕНТ" : "3 полных ЕНТ"}.`}
         </p>
       </section>
 
@@ -108,11 +108,11 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
           <h2>{kz ? "Төлем тексерілуде" : "Оплата на проверке"}</h2>
           <p>
             {kz
-              ? `Kaspi-дегі «${sent.payerName}» атынан ${amountText} төлемін тексереміз. Расталған соң ҰБТ профиліңізде пайда болады.`
-              : `Проверим перевод ${amountText} от «${sent.payerName}» в Kaspi. После подтверждения ЕНТ появятся в профиле.`}
+              ? `Kaspi-дегі «${sent.payerName}» атынан ${amountText} төлемін тексереміз. Расталған соң ҰБТ кабинетіңізде пайда болады.`
+              : `Проверим перевод ${amountText} от «${sent.payerName}» в Kaspi. После подтверждения ЕНТ появятся в кабинете.`}
           </p>
-          <Link to="/profile" className="v2-btn">
-            {kz ? "Профильге өту" : "Перейти в профиль"}
+          <Link to="/cabinet/payments" className="v2-btn">
+            {kz ? "Төлемдерге өту" : "К оплатам"}
           </Link>
         </section>
       ) : (

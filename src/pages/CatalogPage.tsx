@@ -180,7 +180,7 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
               {isAdmin && (
                 <Link to="/admin">{kz ? "Әкімші" : "Админка"}</Link>
               )}
-              <Link to="/profile">{user.name}</Link>
+              <Link to="/cabinet">{kz ? "Жеке кабинет" : "Личный кабинет"}</Link>
               <button type="button" onClick={() => setConfirmLogout(true)}>
                 {kz ? "Шығу" : "Выйти"}
               </button>
@@ -347,8 +347,8 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
         <h2>{kz ? "Тарифтер" : "Тарифы"}</h2>
         <p className="v2-section__intro">
           {kz
-            ? "Kaspi QR арқылы төлейсіз. Төлем тексерілген соң ҰБТ профиліңізге қосылады."
-            : "Оплата через Kaspi QR. После проверки оплаты ЕНТ появятся в профиле."}
+            ? "Kaspi QR арқылы төлейсіз. Төлем тексерілген соң ҰБТ жеке кабинетіңізге қосылады."
+            : "Оплата через Kaspi QR. После проверки оплаты ЕНТ появятся в личном кабинете."}
         </p>
         <ul className="plans">
           <li className="plan">

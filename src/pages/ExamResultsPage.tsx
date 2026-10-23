@@ -62,7 +62,7 @@ export function ExamResultsPage({ lang, onToggleLang }: ExamResultsPageProps) {
 
   const header = (
     <SiteHeader lang={lang} onToggleLang={onToggleLang}>
-      <Link to="/profile">{kz ? "Нәтижелер тарихы" : "История результатов"}</Link>
+      <Link to="/cabinet/results">{kz ? "Нәтижелер тарихы" : "История результатов"}</Link>
       <Link to="/">{kz ? "Басты бет" : "Главная"}</Link>
     </SiteHeader>
   );
@@ -90,7 +90,7 @@ export function ExamResultsPage({ lang, onToggleLang }: ExamResultsPageProps) {
                 ? "Бұл сілтеме бойынша аяқталған ҰБТ жоқ."
                 : "По этой ссылке нет завершённого ЕНТ.")}
           </p>
-          <Link to="/profile" className="v2-btn">
+          <Link to="/cabinet/results" className="v2-btn">
             {kz ? "Нәтижелер тарихына" : "К истории результатов"}
           </Link>
         </main>
@@ -244,7 +244,7 @@ export function ExamResultsPage({ lang, onToggleLang }: ExamResultsPageProps) {
           <Link to="/" className="v2-btn">
             {kz ? "Тағы бір ҰБТ тапсыру" : "Пройти ЕНТ ещё раз"}
           </Link>
-          <Link to="/profile" className="v2-btn v2-btn--quiet">
+          <Link to="/cabinet/results" className="v2-btn v2-btn--quiet">
             {kz ? "Нәтижелер тарихы" : "История результатов"}
           </Link>
         </div>

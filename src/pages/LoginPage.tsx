@@ -53,8 +53,8 @@ export function LoginPage({ lang, onToggleLang }: AuthPageProps) {
           <h1>{kz ? "Кіру" : "Вход"}</h1>
           <p className="auth-form__lead">
             {kz
-              ? "Сынақ нәтижелері профиліңізде сақталады."
-              : "Результаты пробников сохраняются в профиле."}
+              ? "Сынақ нәтижелері жеке кабинетіңізде сақталады."
+              : "Результаты пробников сохраняются в личном кабинете."}
           </p>
           {notice === "pricing" && (
             <p className="v2-notice">

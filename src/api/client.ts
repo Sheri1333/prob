@@ -92,6 +92,40 @@ export interface EntPricing {
 
 export type PaymentPlan = "single" | "bundle";
 
+export interface AnswerTally {
+  total: number;
+  correct: number;
+}
+
+export interface SectionAnalytics {
+  subject: string;
+  block: "history" | "reading" | "math_literacy" | "profile";
+  score: number;
+  maxScore: number;
+  /** Null when the test was deleted and its answer key is gone. */
+  detail: {
+    questions: number;
+    answered: number;
+    correct: number;
+    partial: number;
+    wrong: number;
+    unanswered: number;
+    byType: Record<"single_choice" | "multiple_choice" | "matching", AnswerTally>;
+    byWeight: { one: AnswerTally; two: AnswerTally } | null;
+  } | null;
+}
+
+export interface ExamAnalytics {
+  sessionId: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMin: number;
+  profileSubjects: string[];
+  score: number;
+  maxScore: number;
+  sections: SectionAnalytics[];
+}
+
 export interface PaymentRequest {
   id: string;
   plan: PaymentPlan;
@@ -246,6 +280,11 @@ export const api = {
         }>;
       }>;
     }>("/exams/history");
+  },
+
+  /** Per finished exam and section: right / partly / wrong / skipped, by type and weight. Oldest first. */
+  examAnalytics() {
+    return request<{ exams: ExamAnalytics[] }>("/exams/analytics");
   },
 
   /** Variants in the bank per block/subject, and how many this student has not seen. */

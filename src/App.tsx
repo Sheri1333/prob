@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
 import { ThemeProvider } from "./theme/ThemeContext";
 import type { Lang } from "./i18n/strings";
@@ -14,7 +14,11 @@ import {
   VerifyEmailPage,
 } from "./pages/EmailAuthPages";
 import { LegalPage } from "./pages/LegalPage";
-import { ProfilePage } from "./pages/ProfilePage";
+import { CabinetLayout } from "./pages/cabinet/CabinetLayout";
+import { OverviewPage } from "./pages/cabinet/OverviewPage";
+import { ResultsPage } from "./pages/cabinet/ResultsPage";
+import { SubjectsPage } from "./pages/cabinet/SubjectsPage";
+import { PaymentsPage, SettingsPage } from "./pages/cabinet/AccountPages";
 import { PaymentPage } from "./pages/PaymentPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import "./styles/tokens.css";
@@ -64,7 +68,17 @@ export function App() {
             <Route path="/reset" element={<ResetPasswordPage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/verify" element={<VerifyEmailPage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/pay/:plan" element={<PaymentPage lang={lang} onToggleLang={toggleLang} />} />
-            <Route path="/profile" element={<ProfilePage lang={lang} onToggleLang={toggleLang} />} />
+            <Route path="/profile" element={<Navigate to="/cabinet" replace />} />
+            <Route
+              path="/cabinet"
+              element={<CabinetLayout lang={lang} onToggleLang={toggleLang} />}
+            >
+              <Route index element={<OverviewPage />} />
+              <Route path="results" element={<ResultsPage />} />
+              <Route path="subjects" element={<SubjectsPage />} />
+              <Route path="payments" element={<PaymentsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
             <Route path="/admin" element={<AdminPage />} />
             <Route
               path="/exam/results/:sessionId"
