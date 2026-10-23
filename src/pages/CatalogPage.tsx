@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type EntPricing } from "../api/client";
@@ -18,19 +18,11 @@ interface CatalogPageProps {
   onToggleLang: () => void;
 }
 
-/** Official ҰБТ point split: 20 + 10 + 10 + 50 + 50 = 140. */
-const ENT_BLOCKS = [
-  { points: 20, profile: false, kz: "Қазақстан тарихы", ru: "История Казахстана" },
-  { points: 10, profile: false, kz: "Оқу сауаттылығы", ru: "Грамотность чтения" },
-  { points: 10, profile: false, kz: "Математикалық сауаттылық", ru: "Математическая грамотность" },
-  { points: 50, profile: true, kz: "1-бейіндік пән", ru: "Профильный предмет 1" },
-  { points: 50, profile: true, kz: "2-бейіндік пән", ru: "Профильный предмет 2" },
-];
-
 export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
   useDocumentTitle();
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [error, setError] = useState("");
   const [blueprint, setBlueprint] = useState<Awaited<
     ReturnType<typeof api.getExamBlueprint>
@@ -38,10 +30,13 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
   // Null until /pricing answers, so stale hard-coded prices never flash.
   const [pricingData, setPricing] = useState<EntPricing | null>(null);
   const pricing = pricingData ?? {
-    trialEnabled: true,
     singlePriceTenge: 0,
     bundlePriceTenge: 0,
   };
+  // Paid ENT sessions left; null until known (or when signed out).
+  const [balance, setBalance] = useState<{ credits: number; unlimited: boolean } | null>(
+    null,
+  );
   const [comboModalOpen, setComboModalOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(
@@ -80,7 +75,33 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
     };
   }, []);
 
-  const openFreePlan = () => {
+  // Links such as "/#plans" from the exam and payment pages land on the plans.
+  useEffect(() => {
+    if (location.hash === "#plans") {
+      document.getElementById("plans")?.scrollIntoView();
+    }
+  }, [location.hash]);
+
+  useEffect(() => {
+    if (!user) {
+      setBalance(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .myPayments()
+      .then(({ credits, unlimited }) => {
+        if (!cancelled) setBalance({ credits, unlimited });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const canStart = !!balance && (balance.unlimited || balance.credits > 0);
+
+  const openStart = () => {
     if (!user) {
       navigate("/login", { state: { from: "/", notice: "pricing" } });
       return;
@@ -95,6 +116,10 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
       );
       return;
     }
+    if (!canStart) {
+      scrollToPlans();
+      return;
+    }
     setComboModalOpen(true);
   };
 
@@ -104,17 +129,12 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
     navigate(`/exam?combo=${encodeURIComponent(comboId)}`);
   };
 
-  const buySoon = () => {
+  const buy = (plan: "single" | "bundle") => {
     if (!user) {
-      navigate("/login", { state: { from: "/", notice: "pricing" } });
+      navigate("/login", { state: { from: `/pay/${plan}`, notice: "pricing" } });
       return;
     }
-    toast(
-      "ok",
-      lang === "kz"
-        ? "Төлем жақында қосылады"
-        : "Оплата скоро подключится",
-    );
+    navigate(`/pay/${plan}`);
   };
 
   const resumeExam = () => {
@@ -192,19 +212,28 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
             : "Пройдите полный ЕНТ дома и узнайте свой балл до настоящего экзамена."}
         </p>
         <div className="v2-hero__actions">
-          {pricing.trialEnabled ? (
+          {canStart ? (
             <>
-              <button type="button" className="v2-btn" onClick={openFreePlan}>
-                {kz ? "Тегін ҰБТ тапсыру" : "Пройти ЕНТ бесплатно"}
+              <button type="button" className="v2-btn" onClick={openStart}>
+                {kz ? "ҰБТ бастау" : "Начать ЕНТ"}
               </button>
-              <span className="v2-hero__note">
-                {kz ? "Бір рет, төлемсіз" : "Один раз, без оплаты"}
-              </span>
+              {balance && !balance.unlimited && (
+                <span className="v2-hero__note">
+                  {kz
+                    ? `Төленген ҰБТ: ${balance.credits}`
+                    : `Оплачено ЕНТ: ${balance.credits}`}
+                </span>
+              )}
             </>
           ) : (
-            <button type="button" className="v2-btn" onClick={scrollToPlans}>
-              {kz ? "Тарифті таңдау" : "Выбрать тариф"}
-            </button>
+            <>
+              <button type="button" className="v2-btn" onClick={scrollToPlans}>
+                {kz ? "Тарифті таңдау" : "Выбрать тариф"}
+              </button>
+              <span className="v2-hero__note">
+                {kz ? "Kaspi арқылы төлем" : "Оплата через Kaspi"}
+              </span>
+            </>
           )}
         </div>
 
@@ -233,57 +262,40 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
           </p>
         )}
 
-        <figure className="ent-scale">
-          <figcaption className="ent-scale__caption">
-            {kz ? (
-              <>
-                <strong>Сынақ нағыз ҰБТ-мен бірдей:</strong> 5 пән, 140 балл,{" "}
-                {sessionMinutes} минут.
-              </>
-            ) : (
-              <>
-                <strong>Пробник устроен как настоящий ЕНТ:</strong> 5 предметов,
-                140 баллов, {sessionMinutes} минут.
-              </>
-            )}
-          </figcaption>
-          <div className="ent-scale__bar" aria-hidden="true">
-            {ENT_BLOCKS.map((b) => (
-              <div
-                key={b.ru}
-                className={`ent-scale__seg${b.profile ? " ent-scale__seg--profile" : ""}`}
-                style={{ flexGrow: b.points }}
-                title={`${kz ? b.kz : b.ru}: ${b.points}`}
-              >
-                {b.points}
-              </div>
-            ))}
-          </div>
-          <div className="ent-scale__ticks" aria-hidden="true">
-            <span>0</span>
-            <span>140</span>
-          </div>
-          <div className="ent-scale__key">
-            <div className="ent-scale__group">
-              <h3>{kz ? "Міндетті пәндер, 40 балл" : "Обязательные, 40 баллов"}</h3>
-              <ul>
-                {ENT_BLOCKS.filter((b) => !b.profile).map((b) => (
-                  <li key={b.ru}>
-                    {kz ? b.kz : b.ru}, {b.points}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="ent-scale__group ent-scale__group--profile">
-              <h3>{kz ? "Бейіндік пәндер, 100 балл" : "Профильные, 100 баллов"}</h3>
-              <p>
-                {kz
-                  ? `Екі пән, әрқайсысы 50 балл. ${comboCount} комбинацияның кез келгенін таңдауға болады.`
-                  : `Два предмета по 50 баллов. Можно выбрать любую из ${comboCount} комбинаций.`}
-              </p>
-            </div>
-          </div>
-        </figure>
+        <ul className="hero-stats">
+          {[
+            {
+              icon: "menu_book",
+              value: "5",
+              label: kz ? "пән бір сессияда" : "предметов за сессию",
+            },
+            {
+              icon: "workspace_premium",
+              value: "140",
+              label: kz ? "максимал балл" : "максимальный балл",
+            },
+            {
+              icon: "timer",
+              value: String(sessionMinutes),
+              label: kz ? "минут уақыт" : "минут на тест",
+            },
+            {
+              icon: "call_split",
+              value: String(comboCount),
+              label: kz ? "бейіндік комбинация" : "профильных комбинаций",
+            },
+          ].map((item) => (
+            <li key={item.icon} className="hero-stats__item">
+              <span className="hero-stats__icon material-symbols-outlined" aria-hidden="true">
+                {item.icon}
+              </span>
+              <span className="hero-stats__text">
+                <strong>{item.value}</strong>
+                <span>{item.label}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {comboModalOpen &&
@@ -333,27 +345,12 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
 
       <section className="v2-section" id="plans">
         <h2>{kz ? "Тарифтер" : "Тарифы"}</h2>
+        <p className="v2-section__intro">
+          {kz
+            ? "Kaspi QR арқылы төлейсіз. Төлем тексерілген соң ҰБТ профиліңізге қосылады."
+            : "Оплата через Kaspi QR. После проверки оплаты ЕНТ появятся в профиле."}
+        </p>
         <ul className="plans">
-          {pricing.trialEnabled && (
-            <li className="plan">
-              <h3 className="plan__name">
-                {kz ? "Тегін сынақ" : "Бесплатный пробник"}
-              </h3>
-              <p className="plan__desc">
-                {kz
-                  ? "Толық ҰБТ бір рет, кез келген бейіндік комбинациямен."
-                  : "Полный ЕНТ один раз, с любой профильной комбинацией."}
-              </p>
-              <span className="plan__price">0 ₸</span>
-              <button
-                type="button"
-                className="v2-btn v2-btn--quiet"
-                onClick={openFreePlan}
-              >
-                {kz ? "Бастау" : "Начать"}
-              </button>
-            </li>
-          )}
           <li className="plan">
             <h3 className="plan__name">{kz ? "Толық ҰБТ" : "Полный ЕНТ"}</h3>
             <p className="plan__desc">
@@ -367,7 +364,7 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
             <button
               type="button"
               className="v2-btn v2-btn--quiet"
-              onClick={buySoon}
+              onClick={() => buy("single")}
             >
               {kz ? "Сатып алу" : "Купить"}
             </button>
@@ -389,7 +386,7 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
             <span className="plan__price">
               {formatTenge(pricing.bundlePriceTenge)}
             </span>
-            <button type="button" className="v2-btn" onClick={buySoon}>
+            <button type="button" className="v2-btn" onClick={() => buy("bundle")}>
               {kz ? "Сатып алу" : "Купить"}
             </button>
           </li>
@@ -399,6 +396,14 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
       <section className="v2-section">
         <h2>{kz ? "Қалай өтеді" : "Как это проходит"}</h2>
         <ol className="steps">
+          <li>
+            <h3>{kz ? "Тарифті төлеңіз" : "Оплатите тариф"}</h3>
+            <p>
+              {kz
+                ? "Kaspi арқылы төлеп, сайтта «Төледім» батырмасын басыңыз."
+                : "Оплатите через Kaspi и нажмите на сайте «Я оплатил»."}
+            </p>
+          </li>
           <li>
             <h3>{kz ? "Пәндерді таңдаңыз" : "Выберите предметы"}</h3>
             <p>

@@ -86,10 +86,30 @@ export class ApiError extends Error {
 }
 
 export interface EntPricing {
-  trialEnabled: boolean;
   singlePriceTenge: number;
   bundlePriceTenge: number;
 }
+
+export type PaymentPlan = "single" | "bundle";
+
+export interface PaymentRequest {
+  id: string;
+  plan: PaymentPlan;
+  sessions: number;
+  amountTenge: number;
+  payerName: string;
+  status: "pending" | "confirmed" | "rejected";
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export interface AdminPaymentRequest extends PaymentRequest {
+  user: { id: string; name: string; email: string; credits: number } | null;
+}
+
+/** Kaspi "Оплата услуги" for Талапкер; opens the Kaspi app on a phone. */
+export const KASPI_PAY_URL =
+  "https://kaspi.kz/pay/CoursesUniversal?region_id=18&subservice_id=26536";
 
 export const api = {
   register(body: { email: string; password: string; name: string }) {
@@ -363,6 +383,34 @@ export const api = {
         updatedAt: string;
       }>;
     }>("/admin/tests");
+  },
+
+  myPayments() {
+    return request<{
+      credits: number;
+      unlimited: boolean;
+      requests: PaymentRequest[];
+    }>("/payments/me");
+  },
+
+  createPayment(body: { plan: PaymentPlan; payerName: string }) {
+    return request<PaymentRequest>("/payments", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  adminPayments(status: "pending" | "all") {
+    return request<{ payments: AdminPaymentRequest[] }>(
+      "/admin/payments?status=" + status,
+    );
+  },
+
+  adminDecidePayment(id: string, decision: "confirm" | "reject") {
+    return request<PaymentRequest>(
+      "/admin/payments/" + encodeURIComponent(id) + "/" + decision,
+      { method: "POST" },
+    );
   },
 
   adminGetPricing() {

@@ -56,7 +56,6 @@ adminRouter.get("/pricing", async (_req, res) => {
 adminRouter.put("/pricing", async (req, res) => {
   try {
     const body = (req.body ?? {}) as {
-      trialEnabled?: boolean;
       singlePriceTenge?: number;
       bundlePriceTenge?: number;
     };

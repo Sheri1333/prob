@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
-import { api } from "../api/client";
+import { api, type AdminPaymentRequest } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -16,8 +16,15 @@ import {
 import { useDocumentTitle } from "../utils/useDocumentTitle";
 import { TestPreview } from "../components/admin/TestPreview";
 
-type Tab = "dashboard" | "tests" | "editor" | "pricing" | "email" | "users";
-const TABS: Tab[] = ["dashboard", "tests", "editor", "pricing", "email", "users"];
+type Tab = "dashboard" | "tests" | "editor" | "pricing" | "payments" | "email" | "users";
+const TABS: Tab[] = ["dashboard", "tests", "editor", "pricing", "payments", "email", "users"];
+
+const PLAN_LABEL = { single: "1 ЕНТ", bundle: "3 ЕНТ" } as const;
+const PAYMENT_STATUS_LABEL = {
+  pending: "Ждёт проверки",
+  confirmed: "Подтверждена",
+  rejected: "Отклонена",
+} as const;
 type ParseResult = Awaited<ReturnType<typeof api.adminParseFile>>;
 
 interface VariantDraft {
@@ -92,11 +99,13 @@ export function AdminPage() {
   const [addType, setAddType] = useState<QuestionType>("single_choice");
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
   const [pricing, setPricing] = useState({
-    trialEnabled: true,
     singlePriceTenge: "500",
     bundlePriceTenge: "1250",
   });
   const [savingPricing, setSavingPricing] = useState(false);
+  const [paymentRows, setPaymentRows] = useState<AdminPaymentRequest[]>([]);
+  const [paymentFilter, setPaymentFilter] = useState<"pending" | "all">("pending");
+  const [decidingId, setDecidingId] = useState("");
   const [testQuery, setTestQuery] = useState("");
   const [testQuestions, setTestQuestions] = useState("");
   const [testOrigin, setTestOrigin] = useState("");
@@ -142,10 +151,12 @@ export function AdminPage() {
         setPool(nextPool);
       }
       if (tab === "email") setEmailStatus(await api.adminEmailStatus());
+      if (tab === "payments") {
+        setPaymentRows((await api.adminPayments(paymentFilter)).payments);
+      }
       if (tab === "pricing") {
         const p = await api.adminGetPricing();
         setPricing({
-          trialEnabled: p.trialEnabled,
           singlePriceTenge: String(p.singlePriceTenge),
           bundlePriceTenge: String(p.bundlePriceTenge),
         });
@@ -153,7 +164,7 @@ export function AdminPage() {
     } catch (e) {
       toast("error", e instanceof Error ? e.message : "Ошибка загрузки");
     }
-  }, [tab, toast]);
+  }, [tab, toast, paymentFilter]);
 
   useEffect(() => {
     if (isAdmin) void load();
@@ -548,12 +559,10 @@ export function AdminPage() {
     setSavingPricing(true);
     try {
       const saved = await api.adminSavePricing({
-        trialEnabled: pricing.trialEnabled,
         singlePriceTenge: Number(pricing.singlePriceTenge) || 0,
         bundlePriceTenge: Number(pricing.bundlePriceTenge) || 0,
       });
       setPricing({
-        trialEnabled: saved.trialEnabled,
         singlePriceTenge: String(saved.singlePriceTenge),
         bundlePriceTenge: String(saved.bundlePriceTenge),
       });
@@ -562,6 +571,24 @@ export function AdminPage() {
       toast("error", err instanceof Error ? err.message : "Ошибка сохранения цен");
     } finally {
       setSavingPricing(false);
+    }
+  }
+
+  async function decidePayment(row: AdminPaymentRequest, decision: "confirm" | "reject") {
+    setDecidingId(row.id);
+    try {
+      await api.adminDecidePayment(row.id, decision);
+      toast(
+        "ok",
+        decision === "confirm"
+          ? `Подтверждено: ${row.user?.name ?? "ученик"} получил ${row.sessions} ЕНТ`
+          : "Оплата отклонена",
+      );
+      setPaymentRows((await api.adminPayments(paymentFilter)).payments);
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Не удалось обработать оплату");
+    } finally {
+      setDecidingId("");
     }
   }
 
@@ -649,6 +676,7 @@ export function AdminPage() {
               ["tests", "Тесты"],
               ["editor", "Создать"],
               ["pricing", "Цены"],
+              ["payments", "Оплаты"],
               ["email", "Письма"],
               ["users", "Пользователи"],
             ] as const
@@ -1263,16 +1291,6 @@ export function AdminPage() {
                 Ученик покупает целый ҰБТ. Эти пакеты сразу видны в блоке «Бағалар» на главной.
               </p>
               <div className="admin-meta-form">
-                <label className="admin-meta-form__check">
-                  <input
-                    type="checkbox"
-                    checked={pricing.trialEnabled}
-                    onChange={(e) =>
-                      setPricing((p) => ({ ...p, trialEnabled: e.target.checked }))
-                    }
-                  />
-                  1 пробный бесплатно
-                </label>
                 <label>
                   1 тест, ₸
                   <input
@@ -1285,7 +1303,7 @@ export function AdminPage() {
                   />
                 </label>
                 <label>
-                  Пакет 2+1, ₸
+                  Пакет из 3 ЕНТ, ₸
                   <input
                     type="number"
                     min={0}
@@ -1297,18 +1315,12 @@ export function AdminPage() {
                 </label>
               </div>
               <div className="admin-pricing-preview">
-                {pricing.trialEnabled && (
-                  <div>
-                    <strong>1 пробный</strong>
-                    <span>0 ₸</span>
-                  </div>
-                )}
                 <div>
                   <strong>1 тест</strong>
                   <span>{pricing.singlePriceTenge || 0} ₸</span>
                 </div>
                 <div>
-                  <strong>2+1</strong>
+                  <strong>3 ЕНТ</strong>
                   <span>{pricing.bundlePriceTenge || 0} ₸</span>
                 </div>
               </div>
@@ -1321,6 +1333,109 @@ export function AdminPage() {
                 {savingPricing ? "Сохранение..." : "Сохранить цены"}
               </button>
             </div>
+          </section>
+        )}
+
+        {tab === "payments" && (
+          <section>
+            <div className="admin-page-head">
+              <div>
+                <h1>Оплаты Kaspi</h1>
+                <p>
+                  Kaspi не сообщает сайту об оплате. Найдите перевод в Kaspi Pay по имени и
+                  сумме, затем подтвердите: ученику добавятся попытки ЕНТ.
+                </p>
+              </div>
+              <div className="admin-payments__actions">
+                <button
+                  type="button"
+                  className={`admin-btn${paymentFilter === "pending" ? " admin-btn--primary" : ""}`}
+                  onClick={() => setPaymentFilter("pending")}
+                >
+                  Ждут проверки
+                </button>
+                <button
+                  type="button"
+                  className={`admin-btn${paymentFilter === "all" ? " admin-btn--primary" : ""}`}
+                  onClick={() => setPaymentFilter("all")}
+                >
+                  Все
+                </button>
+              </div>
+            </div>
+            {paymentRows.length === 0 ? (
+              <div className="admin-empty">
+                {paymentFilter === "pending"
+                  ? "Новых оплат нет. Заявка появится, когда ученик нажмёт «Я оплатил»."
+                  : "Оплат пока не было."}
+              </div>
+            ) : (
+              <div className="admin-panel">
+                <table className="admin-table admin-table--actions">
+                  <thead>
+                    <tr>
+                      <th>Заявка</th>
+                      <th>Имя в Kaspi</th>
+                      <th>Аккаунт</th>
+                      <th>Тариф</th>
+                      <th>Сумма</th>
+                      <th>Статус</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paymentRows.map((row) => (
+                      <tr key={row.id}>
+                        <td>{formatDate(row.createdAt)}</td>
+                        <td>
+                          <strong>{row.payerName}</strong>
+                        </td>
+                        <td>
+                          {row.user ? (
+                            <>
+                              {row.user.name}
+                              <br />
+                              <span className="admin-hint">
+                                {row.user.email}, баланс: {row.user.credits}
+                              </span>
+                            </>
+                          ) : (
+                            "Аккаунт удалён"
+                          )}
+                        </td>
+                        <td>{PLAN_LABEL[row.plan]}</td>
+                        <td>
+                          <strong>{row.amountTenge.toLocaleString("ru-RU")} ₸</strong>
+                        </td>
+                        <td>{PAYMENT_STATUS_LABEL[row.status]}</td>
+                        <td>
+                          {row.status === "pending" && (
+                            <div className="admin-payments__actions">
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--primary"
+                                disabled={decidingId === row.id}
+                                onClick={() => void decidePayment(row, "confirm")}
+                              >
+                                Подтвердить
+                              </button>
+                              <button
+                                type="button"
+                                className="admin-btn"
+                                disabled={decidingId === row.id}
+                                onClick={() => void decidePayment(row, "reject")}
+                              >
+                                Отклонить
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
 

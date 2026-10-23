@@ -5,7 +5,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { api, getToken } from "../api/client";
+import { api, ApiError, getToken } from "../api/client";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ExamTools } from "../components/ExamTools";
 import { QuestionView } from "../components/QuestionView";
@@ -62,6 +62,8 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
   const combo = searchParams.get("combo");
   const [draft, setDraft] = useState<ExamDraft | null>(null);
   const [loadError, setLoadError] = useState("");
+  // 402 from /exams/start: the account has no paid ENT sessions left.
+  const [noCredits, setNoCredits] = useState(false);
   const [loading, setLoading] = useState(true);
   const [mapOpen, setMapOpen] = useState(false);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
@@ -170,6 +172,7 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     void boot()
       .catch((e) => {
         if (!cancelled) {
+          setNoCredits(e instanceof ApiError && e.status === 402);
           setLoadError(
             e instanceof Error ? e.message : "Не удалось открыть ЕНТ",
           );
@@ -334,6 +337,22 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     return (
       <div className="page v2 exam-state" role="status">
         <p>{lang === "kz" ? "ҰБТ ашылуда…" : "Открываем ЕНТ…"}</p>
+      </div>
+    );
+  }
+
+  if (noCredits) {
+    return (
+      <div className="page v2 exam-state">
+        <h1>{lang === "kz" ? "Төленген ҰБТ жоқ" : "Нет оплаченных ЕНТ"}</h1>
+        <p>
+          {lang === "kz"
+            ? "Жаңа ҰБТ бастау үшін тарифті Kaspi арқылы төлеңіз. Төлем расталған соң осы жерге оралыңыз."
+            : "Чтобы начать новый ЕНТ, оплатите тариф через Kaspi. После подтверждения оплаты возвращайтесь сюда."}
+        </p>
+        <Link to="/#plans" className="v2-btn">
+          {lang === "kz" ? "Тарифті таңдау" : "Выбрать тариф"}
+        </Link>
       </div>
     );
   }

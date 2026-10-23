@@ -3604,3 +3604,10 @@ label.admin-btn--primary:hover {
   font-size: 0.82rem;
   color: var(--text-muted);
 }
+
+/* Admin → Оплаты: filter and confirm/reject buttons (keep their own colours). */
+.admin-payments__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

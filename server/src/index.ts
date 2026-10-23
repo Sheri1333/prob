@@ -9,6 +9,7 @@ import { attemptsRouter } from "./routes/attempts.js";
 import { adminRouter } from "./routes/admin.js";
 import { examsRouter } from "./routes/exams.js";
 import { filesRouter } from "./routes/files.js";
+import { adminPaymentsRouter, paymentsRouter } from "./routes/payments.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -72,6 +73,8 @@ app.use("/api/tests", testsRouter);
 app.use("/api/attempts", attemptsRouter);
 app.use("/api/exams", examsRouter);
 app.use("/api/files", filesRouter);
+app.use("/api/payments", paymentsRouter);
+app.use("/api/admin/payments", adminPaymentsRouter);
 app.use("/api/admin", adminRouter);
 
 app.use("/api", (_req, res) => {

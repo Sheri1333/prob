@@ -15,6 +15,7 @@ import {
 } from "./pages/EmailAuthPages";
 import { LegalPage } from "./pages/LegalPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { PaymentPage } from "./pages/PaymentPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import "./styles/tokens.css";
 import "./styles/global.css";
@@ -62,6 +63,7 @@ export function App() {
             <Route path="/forgot" element={<ForgotPasswordPage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/reset" element={<ResetPasswordPage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/verify" element={<VerifyEmailPage lang={lang} onToggleLang={toggleLang} />} />
+            <Route path="/pay/:plan" element={<PaymentPage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/profile" element={<ProfilePage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route

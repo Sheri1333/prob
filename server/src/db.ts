@@ -47,6 +47,8 @@ export interface UserDoc {
   verifyExpiresAt?: Date | null;
   resetTokenHash?: string | null;
   resetExpiresAt?: Date | null;
+  /** Paid full ENT sessions left; one is spent when an exam starts. */
+  examCredits?: number;
 }
 
 export interface TestDoc {
@@ -71,6 +73,7 @@ export interface TestDoc {
 
 export interface SettingsDoc {
   _id: string;
+  /** Legacy free-trial switch; every exam is paid now, cleared on save. */
   trialEnabled?: boolean;
   singlePriceTenge?: number;
   bundlePriceTenge?: number;
@@ -88,6 +91,24 @@ export interface AttemptDoc {
   finishedAt: Date;
   /** Full ENT session linking several section attempts. */
   sessionId?: string;
+}
+
+export type PaymentPlan = "single" | "bundle";
+export type PaymentStatus = "pending" | "confirmed" | "rejected";
+
+/** A Kaspi payment the student reported; an admin confirms it by hand. */
+export interface PaymentDoc {
+  _id: ObjectId;
+  userId: ObjectId;
+  plan: PaymentPlan;
+  sessions: number;
+  amountTenge: number;
+  /** Name the student typed in Kaspi, used to find the transfer. */
+  payerName: string;
+  status: PaymentStatus;
+  createdAt: Date;
+  decidedAt?: Date;
+  decidedBy?: ObjectId;
 }
 
 export type ExamSessionStatus = "in_progress" | "submitted" | "abandoned";
@@ -180,6 +201,8 @@ export async function connectDb(): Promise<Db> {
   await database.collection<AttemptDoc>("attempts").createIndex({ sessionId: 1 });
   await database.collection<ExamSessionDoc>("examSessions").createIndex({ userId: 1, status: 1 });
   await database.collection<ExamSessionDoc>("examSessions").createIndex({ endsAt: 1 });
+  await database.collection<PaymentDoc>("payments").createIndex({ userId: 1, createdAt: -1 });
+  await database.collection<PaymentDoc>("payments").createIndex({ status: 1, createdAt: -1 });
 
   await migrateTestIdsToUuid(database);
 
@@ -235,6 +258,10 @@ export function attempts(): Collection<AttemptDoc> {
 
 export function examSessions(): Collection<ExamSessionDoc> {
   return requireDb().collection<ExamSessionDoc>("examSessions");
+}
+
+export function payments(): Collection<PaymentDoc> {
+  return requireDb().collection<PaymentDoc>("payments");
 }
 
 export function settings(): Collection<SettingsDoc> {

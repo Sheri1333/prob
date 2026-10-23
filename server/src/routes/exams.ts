@@ -589,6 +589,23 @@ examsRouter.post("/start", authRequired, startLimiter, async (req: AuthedRequest
     return;
   }
 
+  // Every exam is paid: one session from the balance (admins are exempt).
+  // Checked before anything changes, so a refusal keeps the running exam.
+  const paid = req.user?.role !== "admin";
+  const userOid = req.user ? new ObjectId(req.user.id) : null;
+  if (paid) {
+    const owner = userOid
+      ? await users().findOne({ _id: userOid }, { projection: { examCredits: 1 } })
+      : null;
+    if (!owner || (owner.examCredits ?? 0) < 1) {
+      res.status(402).json({
+        error: "Нет оплаченных попыток ЕНТ. Оплатите тариф, чтобы начать",
+        code: "no_credits",
+      });
+      return;
+    }
+  }
+
   const used = new Set<string>(
     (Array.isArray(body.excludeTestIds) ? body.excludeTestIds : []).filter(
       (id): id is string => typeof id === "string",
@@ -692,7 +709,25 @@ examsRouter.post("/start", authRequired, startLimiter, async (req: AuthedRequest
     sections: storedSections,
     usedTestIds: storedSections.map((s) => s.testId),
   };
-  await examSessions().insertOne(session);
+  if (paid) {
+    const debited = await users().findOneAndUpdate(
+      { _id: userOid!, examCredits: { $gte: 1 } },
+      { $inc: { examCredits: -1 } },
+    );
+    if (!debited) {
+      res.status(402).json({
+        error: "Нет оплаченных попыток ЕНТ. Оплатите тариф, чтобы начать",
+        code: "no_credits",
+      });
+      return;
+    }
+  }
+  try {
+    await examSessions().insertOne(session);
+  } catch (err) {
+    if (paid) await users().updateOne({ _id: userOid! }, { $inc: { examCredits: 1 } });
+    throw err;
+  }
 
   res.status(201).json(publicInProgress(session, now));
 });

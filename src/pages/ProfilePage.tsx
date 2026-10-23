@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
-import { api } from "../api/client";
+import { api, type PaymentRequest } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SiteHeader } from "../components/SiteHeader";
@@ -30,6 +30,19 @@ export function ProfilePage({ lang, onToggleLang }: ProfilePageProps) {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [verifyNotice, setVerifyNotice] = useState("");
+  const [wallet, setWallet] = useState<{
+    credits: number;
+    unlimited: boolean;
+    requests: PaymentRequest[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    api
+      .myPayments()
+      .then(setWallet)
+      .catch(() => undefined);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -117,6 +130,50 @@ export function ProfilePage({ lang, onToggleLang }: ProfilePageProps) {
 
       {error && <p className="v2-error">{error}</p>}
 
+      {wallet && (
+        <section className="balance" aria-live="polite">
+          <div className="balance__text">
+            <strong>
+              {wallet.unlimited
+                ? kz
+                  ? "Әкімші: шектеусіз"
+                  : "Админ: без ограничений"
+                : kz
+                  ? `Төленген ҰБТ: ${wallet.credits}`
+                  : `Оплачено ЕНТ: ${wallet.credits}`}
+            </strong>
+            <span>
+              {wallet.unlimited
+                ? kz
+                  ? "Тексеру үшін ҰБТ-ны төлемсіз бастай аласыз."
+                  : "Для проверки ЕНТ запускается без оплаты."
+                : wallet.credits > 0
+                  ? kz
+                    ? "Әр ҰБТ басталғанда біреуі есептен шығады."
+                    : "При старте каждого ЕНТ списывается одна попытка."
+                  : kz
+                    ? "ҰБТ тапсыру үшін тарифті Kaspi арқылы төлеңіз."
+                    : "Чтобы пройти ЕНТ, оплатите тариф через Kaspi."}
+            </span>
+          </div>
+          <div className="balance__actions">
+            {(wallet.unlimited || wallet.credits > 0) && (
+              <Link to="/" className="v2-btn">
+                {kz ? "ҰБТ бастау" : "Начать ЕНТ"}
+              </Link>
+            )}
+            {!wallet.unlimited && (
+              <Link
+                to="/pay/bundle"
+                className={`v2-btn${wallet.credits > 0 ? " v2-btn--quiet" : ""}`}
+              >
+                {kz ? "ҰБТ сатып алу" : "Купить ЕНТ"}
+              </Link>
+            )}
+          </div>
+        </section>
+      )}
+
       {stats && (
         <dl className="score-summary">
           <div className="score-summary__best">
@@ -149,7 +206,7 @@ export function ProfilePage({ lang, onToggleLang }: ProfilePageProps) {
                 : "Пока нет пройденных ЕНТ. После первого пробника каждый результат появится здесь на шкале из 140 баллов."}
             </p>
             <Link to="/" className="v2-btn">
-              {kz ? "Тегін ҰБТ тапсыру" : "Пройти ЕНТ бесплатно"}
+              {kz ? "ҰБТ тапсыру" : "Пройти ЕНТ"}
             </Link>
           </div>
         ) : (
@@ -207,6 +264,51 @@ export function ProfilePage({ lang, onToggleLang }: ProfilePageProps) {
           </>
         )}
       </section>
+
+      {wallet && wallet.requests.length > 0 && (
+        <section className="v2-section">
+          <h2>{kz ? "Төлемдер" : "Оплаты"}</h2>
+          <ul className="payments-list">
+            {wallet.requests.map((r) => (
+              <li key={r.id}>
+                <span className="payments-list__what">
+                  {r.sessions === 1
+                    ? kz
+                      ? "1 толық ҰБТ"
+                      : "1 полный ЕНТ"
+                    : kz
+                      ? `${r.sessions} толық ҰБТ`
+                      : `${r.sessions} полных ЕНТ`}
+                  , {r.amountTenge.toLocaleString("ru-RU")} ₸
+                </span>
+                <span className="payments-list__meta">
+                  {formatDate(r.createdAt)}, {kz ? "Kaspi-дегі аты" : "имя в Kaspi"}: {r.payerName}
+                </span>
+                <span className={`payments-list__status payments-list__status--${r.status}`}>
+                  {r.status === "pending"
+                    ? kz
+                      ? "Тексерілуде"
+                      : "На проверке"
+                    : r.status === "confirmed"
+                      ? kz
+                        ? "Расталды"
+                        : "Подтверждена"
+                      : kz
+                        ? "Табылмады"
+                        : "Не найдена"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {wallet.requests.some((r) => r.status === "rejected") && (
+            <p className="history__legend">
+              {kz
+                ? "«Табылмады» дегеніміз Kaspi-де осы аты-жөні мен сомадағы төлем табылмады. Төлеген болсаңыз, бізге жазыңыз."
+                : "«Не найдена» значит, что перевода с таким именем и суммой в Kaspi нет. Если вы платили, напишите нам."}
+            </p>
+          )}
+        </section>
+      )}
 
       {confirmLogout && (
         <ConfirmDialog

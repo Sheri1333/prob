@@ -3,16 +3,17 @@ import { settings } from "./db.js";
 export const PRICING_ID = "ent-pricing";
 
 export interface EntPricing {
-  trialEnabled: boolean;
   singlePriceTenge: number;
   bundlePriceTenge: number;
 }
 
 export const DEFAULT_PRICING: EntPricing = {
-  trialEnabled: true,
   singlePriceTenge: 500,
   bundlePriceTenge: 1250,
 };
+
+/** Full ENT sessions each plan adds to the balance. */
+export const PLAN_SESSIONS = { single: 1, bundle: 3 } as const;
 
 function clampPrice(value: unknown, fallback: number): number {
   const n = typeof value === "number" ? value : Number(value);
@@ -22,7 +23,6 @@ function clampPrice(value: unknown, fallback: number): number {
 
 export function normalizePricing(input: Partial<EntPricing> | null | undefined): EntPricing {
   return {
-    trialEnabled: input?.trialEnabled !== false,
     singlePriceTenge: clampPrice(input?.singlePriceTenge, DEFAULT_PRICING.singlePriceTenge),
     bundlePriceTenge: clampPrice(input?.bundlePriceTenge, DEFAULT_PRICING.bundlePriceTenge),
   };
@@ -37,7 +37,7 @@ export async function savePricing(input: Partial<EntPricing>): Promise<EntPricin
   const next = normalizePricing(input);
   await settings().updateOne(
     { _id: PRICING_ID },
-    { $set: { ...next, updatedAt: new Date() } },
+    { $set: { ...next, updatedAt: new Date() }, $unset: { trialEnabled: "" } },
     { upsert: true },
   );
   return next;

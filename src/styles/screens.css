@@ -1328,3 +1328,271 @@
   border: 1px solid var(--line);
   border-left: 4px solid var(--bad);
 }
+
+/* ---------- Kaspi payment ---------- */
+
+.pay-head {
+  padding: clamp(2rem, 5vw, 3rem) 0 1.5rem;
+}
+
+.pay-head h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 3.5vw, 2rem);
+  line-height: 1.2;
+}
+
+.pay-head__amount {
+  margin: 0.5rem 0 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-head__note {
+  margin: 0.6rem 0 0;
+  max-width: 36rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.pay-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  padding: 1.5rem 0 3rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Paying really is a sequence, so the steps are numbered. */
+.pay-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: pay;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.pay-steps > li {
+  counter-increment: pay;
+  display: grid;
+  grid-template-columns: 2.25rem 1fr;
+  column-gap: 0.75rem;
+}
+
+.pay-steps > li::before {
+  content: counter(pay);
+  grid-row: span 6;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  color: var(--brand);
+}
+
+.pay-steps h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.pay-steps p {
+  margin: 0;
+  max-width: 34rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.pay-steps__kaspi {
+  justify-self: start;
+  margin-top: 0.9rem;
+}
+
+.pay-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 2.5rem;
+  margin: 0.35rem 0 0.75rem;
+}
+
+.pay-facts > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.pay-facts dt {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.pay-facts dd {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.9rem;
+  max-width: 26rem;
+  margin-top: 0.35rem;
+}
+
+.pay-form .field {
+  align-self: stretch;
+}
+
+.pay-form .v2-error {
+  margin: 0;
+  align-self: stretch;
+}
+
+.pay-qr {
+  margin: 0;
+  display: none;
+}
+
+/* The QR is only useful on a second device; phones get the Kaspi button. */
+@media (min-width: 820px) {
+  .pay-layout {
+    grid-template-columns: 1fr 19rem;
+    gap: 3rem;
+  }
+
+  .pay-qr {
+    display: block;
+    position: sticky;
+    top: 1.5rem;
+    align-self: start;
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #fff;
+  }
+
+  .pay-qr img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .pay-qr figcaption {
+    margin-top: 0.75rem;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    color: #3d4865;
+    text-align: center;
+  }
+}
+
+.pay-done {
+  padding: 1.75rem 0 3rem;
+  border-top: 1px solid var(--line);
+  max-width: 36rem;
+}
+
+.pay-done h2 {
+  margin: 0 0 0.6rem;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.4rem;
+}
+
+.pay-done p {
+  margin: 0 0 1.5rem;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+/* ---------- Profile: balance and payments ---------- */
+
+.balance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.balance__text strong {
+  display: block;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.35rem;
+}
+
+.balance__text span {
+  color: var(--muted);
+  font-size: 0.93rem;
+}
+
+.balance__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.payments-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.payments-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.2rem 1rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.payments-list li:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.payments-list__what {
+  font-weight: 600;
+}
+
+.payments-list__meta {
+  grid-column: 1;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.payments-list__status {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.payments-list__status--pending {
+  background: var(--gold-soft);
+  color: var(--timer-low);
+}
+
+.payments-list__status--confirmed {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.payments-list__status--rejected {
+  background: var(--bad-soft);
+  color: var(--bad);
+}
