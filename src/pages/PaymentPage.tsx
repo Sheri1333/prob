@@ -1,11 +1,11 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import {
   api,
-  KASPI_PAY_URL,
+  API_BASE,
   type EntPricing,
+  type PaymentAttempt,
   type PaymentPlan,
-  type PaymentRequest,
 } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { SiteHeader } from "../components/SiteHeader";
@@ -27,9 +27,32 @@ function isPlan(value: string | undefined): value is PaymentPlan {
   return value === "single" || value === "bundle";
 }
 
+function cleanName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function kaspiLink(attempt: PaymentAttempt, payerName: string): string {
+  const url = new URL(attempt.linkUrl);
+  const name = cleanName(payerName);
+  if (name.length >= 2) url.searchParams.set("name", name);
+  return url.toString();
+}
+
+function openedHow(vias: PaymentAttempt["vias"], kz: boolean): string {
+  const link = vias.includes("link");
+  const qr = vias.includes("qr");
+  if (link && qr) {
+    return kz
+      ? "Сілтемені ашқаныңызды және QR сканерлегеніңізді көрдік."
+      : "Видим, что вы открыли ссылку и отсканировали QR.";
+  }
+  if (qr) return kz ? "QR сканерлегеніңізді көрдік." : "Видим, что вы отсканировали QR.";
+  return kz ? "Сілтемені ашқаныңызды көрдік." : "Видим, что вы открыли ссылку.";
+}
+
 /**
- * Kaspi QR "Оплата услуги" has no callback: the student pays in Kaspi, then
- * tells us here. An admin finds the transfer by name and amount and confirms.
+ * Kaspi has no callback. Opening the link or the personal QR records the
+ * attempt and asks the admin in Telegram. This page watches until they decide.
  */
 export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
   const kz = lang === "kz";
@@ -37,27 +60,83 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
   const { plan } = useParams<{ plan: string }>();
   const { user, loading } = useAuth();
   const [pricing, setPricing] = useState<EntPricing | null>(null);
+  const [attempt, setAttempt] = useState<PaymentAttempt | null>(null);
   const [payerName, setPayerName] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [nameReady, setNameReady] = useState(false);
+  const [rejectedNote, setRejectedNote] = useState(false);
   const [error, setError] = useState("");
-  const [sent, setSent] = useState<PaymentRequest | null>(null);
 
   useEffect(() => {
     api
       .getPricing()
       .then(setPricing)
       .catch(() => setError(kz ? "Бағаны жүктеу мүмкін болмады." : "Не удалось загрузить цену."));
-    // The price does not depend on the language.
-  }, []);
+  }, [kz]);
 
-  // Reached from the plans further down the home page; start at the top.
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
   useEffect(() => {
-    if (user && !payerName) setPayerName(user.name);
-  }, [user, payerName]);
+    if (!user || !isPlan(plan)) return;
+    let gone = false;
+    api
+      .openPaymentAttempt(plan)
+      .then((row) => {
+        if (!gone) setAttempt(row);
+      })
+      .catch((err) => {
+        if (!gone) setError(err instanceof Error ? err.message : "Ошибка");
+      });
+    return () => {
+      gone = true;
+    };
+  }, [user, plan]);
+
+  useEffect(() => {
+    if (attempt && !nameReady) {
+      setPayerName(attempt.payerName);
+      setNameReady(true);
+    }
+  }, [attempt, nameReady]);
+
+  useEffect(() => {
+    if (!attempt || !isPlan(plan)) return;
+    if (attempt.status === "confirmed" || attempt.status === "rejected") return;
+    const token = attempt.token;
+    const timer = window.setInterval(() => {
+      api
+        .paymentAttempt(token)
+        .then(async (row) => {
+          if (row.status === "rejected") {
+            setRejectedNote(true);
+            try {
+              setAttempt(await api.openPaymentAttempt(plan));
+            } catch {
+              setAttempt(row);
+            }
+            return;
+          }
+          setAttempt(row);
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [attempt?.token, attempt?.status, plan]);
+
+  useEffect(() => {
+    if (!attempt || attempt.status === "confirmed" || attempt.status === "rejected") return;
+    const name = cleanName(payerName);
+    if (name.length < 2 || name === attempt.payerName) return;
+    const token = attempt.token;
+    const timer = window.setTimeout(() => {
+      api
+        .updatePaymentAttempt(token, name)
+        .then((row) => setAttempt(row))
+        .catch(() => undefined);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [payerName, attempt]);
 
   if (!isPlan(plan)) return <Navigate to="/#plans" replace />;
   if (loading) return null;
@@ -69,22 +148,11 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
     ? plan === "single"
       ? pricing.singlePriceTenge
       : pricing.bundlePriceTenge
-    : null;
+    : (attempt?.amountTenge ?? null);
   const amountText = amount === null ? "… ₸" : `${amount.toLocaleString("ru-RU")} ₸`;
   const sessions = plan === "single" ? 1 : 3;
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    setBusy(true);
-    try {
-      setSent(await api.createPayment({ plan: plan as PaymentPlan, payerName }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const waiting = attempt?.status === "pending";
+  const paid = attempt?.status === "confirmed";
 
   return (
     <div className="page v2">
@@ -103,36 +171,63 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
         </p>
       </section>
 
-      {sent ? (
+      {paid ? (
         <section className="pay-done" role="status">
-          <h2>{kz ? "Төлем тексерілуде" : "Оплата на проверке"}</h2>
+          <h2>{kz ? "Төлем расталды" : "Оплата подтверждена"}</h2>
           <p>
             {kz
-              ? `Kaspi-дегі «${sent.payerName}» атынан ${amountText} төлемін тексереміз. Расталған соң ҰБТ кабинетіңізде пайда болады.`
-              : `Проверим перевод ${amountText} от «${sent.payerName}» в Kaspi. После подтверждения ЕНТ появятся в кабинете.`}
+              ? "ҰБТ кабинетіңізге қосылды. Жаңа тестті сол жерден бастайсыз."
+              : "ЕНТ добавлены в кабинет. Новый тест можно начать оттуда."}
           </p>
-          <Link to="/cabinet/payments" className="v2-btn">
-            {kz ? "Төлемдерге өту" : "К оплатам"}
+          <Link to="/cabinet" className="v2-btn">
+            {kz ? "Кабинетке өту" : "В кабинет"}
           </Link>
         </section>
       ) : (
         <div className="pay-layout">
+          {rejectedNote && (
+            <p className="v2-error" role="status">
+              {kz
+                ? "Алдыңғы төлем табылмады. Қайта төлесеңіз, жаңа өтінім тексеруге түседі."
+                : "Прошлый перевод не найден. Если оплатите снова, новая заявка уйдёт на проверку."}
+            </p>
+          )}
+          {waiting && attempt && (
+            <p className="pay-live" role="status">
+              {openedHow(attempt.vias, kz)}{" "}
+              {kz
+                ? "Kaspi-дегі аударманы тексеріп жатырмыз. Расталған соң ҰБТ осы бетте пайда болады."
+                : "Проверяем перевод в Kaspi. После подтверждения ЕНТ появятся на этой странице."}
+            </p>
+          )}
+          {error && (
+            <p className="v2-error" role="alert">
+              {error}
+            </p>
+          )}
+
           <ol className="pay-steps">
             <li>
               <h2>{kz ? "Kaspi-де төлеңіз" : "Оплатите в Kaspi"}</h2>
               <p>
                 {kz
-                  ? "Телефоннан батырманы басыңыз, ал компьютерден QR-кодты Kaspi қосымшасымен сканерлеңіз."
-                  : "С телефона нажмите кнопку, с компьютера отсканируйте QR-код в приложении Kaspi."}
+                  ? "Телефоннан батырманы басыңыз, ал компьютерден QR-кодты Kaspi қосымшасымен сканерлеңіз. Өтінім осы сәтте өзі тексеруге түседі."
+                  : "С телефона нажмите кнопку, с компьютера отсканируйте QR в приложении Kaspi. Заявка в этот момент сама уйдёт на проверку."}
               </p>
-              <a
-                className="v2-btn pay-steps__kaspi"
-                href={KASPI_PAY_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {kz ? "Kaspi-де ашу" : "Открыть Kaspi"}
-              </a>
+              {attempt ? (
+                <a
+                  className="v2-btn pay-steps__kaspi"
+                  href={kaspiLink(attempt, payerName)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {kz ? "Kaspi-де ашу" : "Открыть Kaspi"}
+                </a>
+              ) : (
+                <button type="button" className="v2-btn pay-steps__kaspi" disabled>
+                  {kz ? "Сілтеме дайындалуда…" : "Готовим ссылку…"}
+                </button>
+              )}
             </li>
             <li>
               <h2>{kz ? "Дәл осы деректерді жазыңыз" : "Укажите в Kaspi ровно это"}</h2>
@@ -141,62 +236,48 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
                   <dt>{kz ? "Сома" : "Сумма"}</dt>
                   <dd>{amountText}</dd>
                 </div>
-                <div>
-                  <dt>{kz ? "Аты-жөні" : "ФИО"}</dt>
-                  <dd>{payerName || user.name}</dd>
-                </div>
               </dl>
+              <label className="field">
+                <span className="field__label">
+                  {kz ? "Kaspi-де жазатын аты-жөніңіз" : "ФИО, которое укажете в Kaspi"}
+                </span>
+                <input
+                  value={payerName}
+                  onChange={(e) => setPayerName(e.target.value)}
+                  required
+                  minLength={2}
+                  maxLength={80}
+                  autoComplete="name"
+                />
+              </label>
               <p>
                 {kz
                   ? "Төлемді аты-жөні мен сомасы бойынша табамыз, сондықтан екеуі де сәйкес келуі керек."
                   : "Мы находим перевод по имени и сумме, поэтому оба должны совпадать."}
               </p>
             </li>
-            <li>
-              <h2>{kz ? "Төлегеніңізді хабарлаңыз" : "Сообщите об оплате"}</h2>
-              <form className="pay-form" onSubmit={onSubmit}>
-                <label className="field">
-                  <span className="field__label">
-                    {kz ? "Kaspi-де жазған аты-жөніңіз" : "ФИО, которое вы указали в Kaspi"}
-                  </span>
-                  <input
-                    value={payerName}
-                    onChange={(e) => setPayerName(e.target.value)}
-                    required
-                    minLength={2}
-                    maxLength={80}
-                    autoComplete="name"
-                  />
-                </label>
-                {error && (
-                  <p className="v2-error" role="alert">
-                    {error}
-                  </p>
-                )}
-                <button type="submit" className="v2-btn" disabled={busy || amount === null}>
-                  {busy
-                    ? kz
-                      ? "Жіберілуде…"
-                      : "Отправляем…"
-                    : kz
-                      ? "Төледім"
-                      : "Я оплатил"}
-                </button>
-              </form>
-            </li>
           </ol>
 
           <figure className="pay-qr">
-            <img
-              src="/kaspi-qr.png"
-              width={350}
-              height={354}
-              alt={kz ? "Талапкер үшін Kaspi QR коды" : "Kaspi QR-код для оплаты Талапкер"}
-            />
+            {attempt ? (
+              <img
+                src={`${API_BASE}/api/payments/qr/${attempt.token}`}
+                width={350}
+                height={350}
+                alt={kz ? "Осы төлемге арналған Kaspi QR коды" : "QR-код этой оплаты"}
+              />
+            ) : (
+              <img
+                alt=""
+                width={350}
+                height={350}
+                src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+              />
+            )}
             <figcaption>
               {kz
-                ? "Kaspi қосымшасында «Kaspi QR» арқылы сканерлеңіз"
-                : "Отсканируйте через «Kaspi QR» в приложении Kaspi"}
+                ? "Kaspi қосымшасында «Kaspi QR» арқылы сканерлеңіз. Сканды көріп, тексеруге жібереміз."
+                : "Отсканируйте через «Kaspi QR» в приложении Kaspi. Мы увидим скан и отправим его на проверку."}
             </figcaption>
           </figure>
         </div>

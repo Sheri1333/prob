@@ -133,17 +133,22 @@ export interface PaymentRequest {
   amountTenge: number;
   payerName: string;
   status: "pending" | "confirmed" | "rejected";
+  vias?: ("link" | "qr")[];
   createdAt: string;
   decidedAt: string | null;
+}
+
+/** Live Kaspi attempt. `prepared` means the student has not opened Kaspi yet. */
+export interface PaymentAttempt extends Omit<PaymentRequest, "status" | "vias"> {
+  status: "prepared" | "pending" | "confirmed" | "rejected";
+  vias: ("link" | "qr")[];
+  token: string;
+  linkUrl: string;
 }
 
 export interface AdminPaymentRequest extends PaymentRequest {
   user: { id: string; name: string; email: string; credits: number } | null;
 }
-
-/** Kaspi "Оплата услуги" for Талапкер; opens the Kaspi app on a phone. */
-export const KASPI_PAY_URL =
-  "https://kaspi.kz/pay/CoursesUniversal?region_id=18&subservice_id=26536";
 
 export const api = {
   register(body: { email: string; password: string; name: string }) {
@@ -452,10 +457,21 @@ export const api = {
     }>("/payments/me");
   },
 
-  createPayment(body: { plan: PaymentPlan; payerName: string }) {
-    return request<PaymentRequest>("/payments", {
+  openPaymentAttempt(plan: PaymentPlan) {
+    return request<PaymentAttempt>("/payments/attempt", {
       method: "POST",
-      body: JSON.stringify(body),
+      body: JSON.stringify({ plan }),
+    });
+  },
+
+  paymentAttempt(token: string) {
+    return request<PaymentAttempt>("/payments/attempt/" + encodeURIComponent(token));
+  },
+
+  updatePaymentAttempt(token: string, payerName: string) {
+    return request<PaymentAttempt>("/payments/attempt/" + encodeURIComponent(token), {
+      method: "PATCH",
+      body: JSON.stringify({ payerName }),
     });
   },
 

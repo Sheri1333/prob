@@ -9,7 +9,8 @@ import { attemptsRouter } from "./routes/attempts.js";
 import { adminRouter } from "./routes/admin.js";
 import { examsRouter } from "./routes/exams.js";
 import { filesRouter } from "./routes/files.js";
-import { adminPaymentsRouter, paymentsRouter } from "./routes/payments.js";
+import { adminPaymentsRouter, handleTelegramUpdate, paymentsRouter } from "./routes/payments.js";
+import { startTelegramPolling } from "./telegram.js";
 
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = process.env.HOST || "0.0.0.0";
@@ -129,7 +130,9 @@ async function connectLoop(): Promise<void> {
   }
 }
 
-void connectLoop();
+void connectLoop().then(() => {
+  startTelegramPolling(handleTelegramUpdate);
+});
 
 export default app;
 export { server };

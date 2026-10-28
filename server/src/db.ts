@@ -94,21 +94,34 @@ export interface AttemptDoc {
 }
 
 export type PaymentPlan = "single" | "bundle";
-export type PaymentStatus = "pending" | "confirmed" | "rejected";
+/** prepared = page opened, Kaspi not opened yet. Hidden from lists. */
+export type PaymentStatus = "prepared" | "pending" | "confirmed" | "rejected";
+export type PaymentVia = "link" | "qr";
 
-/** A Kaspi payment the student reported; an admin confirms it by hand. */
+/**
+ * A Kaspi payment. Kaspi sends no callback, so the attempt becomes pending
+ * when the student opens our redirect (link or QR). An admin confirms it.
+ */
 export interface PaymentDoc {
   _id: ObjectId;
   userId: ObjectId;
   plan: PaymentPlan;
   sessions: number;
   amountTenge: number;
-  /** Name the student typed in Kaspi, used to find the transfer. */
+  /** Name the student will type in Kaspi, used to find the transfer. */
   payerName: string;
   status: PaymentStatus;
+  /** Unguessable key for the Kaspi redirect. Absent on older requests. */
+  token?: string;
+  vias?: PaymentVia[];
+  openedAt?: Date;
+  /** Set while a Telegram message is being sent, so a second click does not duplicate it. */
+  notifiedAt?: Date;
+  telegramMessages?: { chatId: number; messageId: number }[];
   createdAt: Date;
   decidedAt?: Date;
   decidedBy?: ObjectId;
+  decidedVia?: "admin" | "telegram";
 }
 
 export type ExamSessionStatus = "in_progress" | "submitted" | "abandoned";
@@ -203,6 +216,10 @@ export async function connectDb(): Promise<Db> {
   await database.collection<ExamSessionDoc>("examSessions").createIndex({ endsAt: 1 });
   await database.collection<PaymentDoc>("payments").createIndex({ userId: 1, createdAt: -1 });
   await database.collection<PaymentDoc>("payments").createIndex({ status: 1, createdAt: -1 });
+  await database.collection<PaymentDoc>("payments").createIndex(
+    { token: 1 },
+    { unique: true, sparse: true },
+  );
 
   await migrateTestIdsToUuid(database);
 

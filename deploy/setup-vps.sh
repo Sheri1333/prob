@@ -84,6 +84,8 @@ BREVO_API_KEY=
 BREVO_SENDER_EMAIL=sausee.com@gmail.com
 BREVO_SENDER_NAME=Talapker
 BREVO_LIST_ID=3
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_BIND_CODE=$(openssl rand -hex 4)
 EOF
   chown "$APP_USER:$APP_USER" "$ENV_FILE"
   chmod 600 "$ENV_FILE"
