@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { Router, type Request, type Response } from "express";
+import { Router, type Response } from "express";
 import { ObjectId } from "mongodb";
-import QRCode from "qrcode";
 import { authRequired, adminRequired, type AuthedRequest } from "../auth.js";
 import {
   payments,
@@ -9,9 +8,7 @@ import {
   users,
   type PaymentDoc,
   type PaymentPlan,
-  type PaymentVia,
 } from "../db.js";
-import { publicAppUrl } from "../brevo.js";
 import { rateLimit } from "../rateLimit.js";
 import { getPricing, PLAN_SESSIONS } from "../settings.js";
 import {
@@ -26,29 +23,20 @@ import {
 } from "../telegram.js";
 
 /**
- * Kaspi QR "Оплата услуги" sends no callback. The student opens a redirect we
- * issued (link or personal QR); that visit becomes a pending attempt and a
- * Telegram message. An admin confirms it in Telegram or in the admin page.
+ * Kaspi "Оплата услуги" has no callback. The student pays with the static QR /
+ * Kaspi link, presses "Оплатить", and we ask an admin in Telegram to confirm.
  */
 export const paymentsRouter = Router();
 
 const MAX_PENDING = 3;
-const KASPI_PAY_URL =
-  "https://kaspi.kz/pay/CoursesUniversal?region_id=18&subservice_id=26536";
 
 let missingAdminLogged = false;
 
 const attemptLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 30,
+  max: 20,
   message: "Слишком много попыток оплаты. Попробуйте позже",
   key: (req) => (req as AuthedRequest).user?.id ?? req.ip ?? "unknown",
-});
-
-const goLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 60,
-  message: "Слишком много переходов. Подождите и откройте ссылку снова",
 });
 
 function publicPayment(doc: PaymentDoc) {
@@ -69,7 +57,6 @@ function publicAttempt(doc: PaymentDoc) {
   return {
     ...publicPayment(doc),
     token: doc.token ?? "",
-    linkUrl: doc.token ? goUrl(doc.token, "link") : "",
   };
 }
 
@@ -83,24 +70,11 @@ function readToken(value: unknown): string | null {
   return token;
 }
 
-function goUrl(token: string, via: PaymentVia): string {
-  return `${publicAppUrl()}/api/payments/go/${token}?via=${via}`;
-}
-
 function payerNameOf(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const name = value.trim().replace(/\s+/g, " ");
   if (name.length < 2 || name.length > 80) return null;
   return name;
-}
-
-function viaLabel(vias: PaymentVia[]): string {
-  const link = vias.includes("link");
-  const qr = vias.includes("qr");
-  if (link && qr) return "ссылка и QR";
-  if (qr) return "QR";
-  if (link) return "ссылка";
-  return "ещё не открывал Kaspi";
 }
 
 function attemptText(
@@ -119,7 +93,6 @@ function attemptText(
     `Тариф: ${doc.plan === "single" ? "Полный ЕНТ" : "3 полных ЕНТ"} (${doc.sessions})`,
     `Сумма: ${doc.amountTenge.toLocaleString("ru-RU")} ₸`,
     `Имя в Kaspi: ${doc.payerName}`,
-    `Переход: ${viaLabel(doc.vias ?? [])}`,
     `Время: ${when}`,
     "",
     statusLine ?? "Проверьте перевод в Kaspi и нажмите кнопку.",
@@ -168,14 +141,6 @@ async function ensureNotified(id: ObjectId): Promise<void> {
       return;
     }
     await payments().updateOne({ _id: id }, { $set: { telegramMessages: messages } });
-    const after = await payments().findOne({ _id: id });
-    if (after && viaLabel(after.vias ?? []) !== viaLabel(fresh.vias ?? [])) {
-      await editPaymentCard(
-        messages,
-        attemptText(await userLabel(after), after),
-        after._id.toHexString(),
-      );
-    }
   } catch (err) {
     console.error("Telegram notify:", err instanceof Error ? err.message : err);
     await payments().updateOne({ _id: id }, { $unset: { notifiedAt: "" } });
@@ -239,13 +204,6 @@ export async function applyDecision(
   return updated;
 }
 
-function isPrefetch(req: Request): boolean {
-  const purpose = [req.get("Purpose"), req.get("Sec-Purpose"), req.get("X-Purpose"), req.get("X-Moz")]
-    .join(" ")
-    .toLowerCase();
-  return purpose.includes("prefetch") || purpose.includes("preview");
-}
-
 paymentsRouter.get("/me", authRequired, async (req: AuthedRequest, res) => {
   const userId = new ObjectId(req.user!.id);
   const [row, list] = await Promise.all([
@@ -263,21 +221,39 @@ paymentsRouter.get("/me", authRequired, async (req: AuthedRequest, res) => {
   });
 });
 
+/** Creates a pending payment and notifies Telegram when the student presses pay. */
 paymentsRouter.post("/attempt", authRequired, attemptLimiter, async (req: AuthedRequest, res) => {
-  const body = (req.body ?? {}) as { plan?: unknown };
+  const body = (req.body ?? {}) as { plan?: unknown; payerName?: unknown };
   if (!isPlan(body.plan)) {
     res.status(400).json({ error: "Выберите тариф" });
     return;
   }
+  const payerName = payerNameOf(body.payerName) ?? payerNameOf(req.user!.name);
+  if (!payerName) {
+    res.status(400).json({ error: "Укажите имя, которое вы введёте в Kaspi" });
+    return;
+  }
+
   const userId = new ObjectId(req.user!.id);
   const existing = await payments().findOne(
-    { userId, plan: body.plan, status: { $in: ["prepared", "pending"] } },
+    { userId, plan: body.plan, status: "pending" },
     { sort: { createdAt: -1 } },
   );
   if (existing) {
+    if (existing.payerName !== payerName) {
+      const updated = await payments().findOneAndUpdate(
+        { _id: existing._id, status: "pending" },
+        { $set: { payerName } },
+        { returnDocument: "after" },
+      );
+      if (updated?.telegramMessages?.length) await refreshTelegram(updated);
+      res.json(publicAttempt(updated ?? existing));
+      return;
+    }
     res.json(publicAttempt(existing));
     return;
   }
+
   const pending = await payments().countDocuments({ userId, status: "pending" });
   if (pending >= MAX_PENDING) {
     res.status(429).json({
@@ -285,19 +261,24 @@ paymentsRouter.post("/attempt", authRequired, attemptLimiter, async (req: Authed
     });
     return;
   }
+
   const pricing = await getPricing();
+  const now = new Date();
   const doc: PaymentDoc = {
     _id: new ObjectId(),
     userId,
     plan: body.plan,
     sessions: PLAN_SESSIONS[body.plan],
     amountTenge: body.plan === "single" ? pricing.singlePriceTenge : pricing.bundlePriceTenge,
-    payerName: req.user!.name,
-    status: "prepared",
+    payerName,
+    status: "pending",
     token: randomBytes(16).toString("hex"),
-    createdAt: new Date(),
+    vias: ["link"],
+    openedAt: now,
+    createdAt: now,
   };
   await payments().insertOne(doc);
+  await ensureNotified(doc._id);
   res.status(201).json(publicAttempt(doc));
 });
 
@@ -318,113 +299,20 @@ paymentsRouter.get("/attempt/:token", authRequired, async (req: AuthedRequest, r
   res.json(publicAttempt(doc));
 });
 
-paymentsRouter.patch("/attempt/:token", authRequired, async (req: AuthedRequest, res) => {
-  const token = readToken(req.params.token);
-  const payerName = payerNameOf((req.body ?? {}).payerName);
-  if (!token || !payerName) {
-    res.status(400).json({ error: "Укажите имя, которое вы введёте в Kaspi" });
+paymentsRouter.get("/pending/:plan", authRequired, async (req: AuthedRequest, res) => {
+  if (!isPlan(req.params.plan)) {
+    res.status(400).json({ error: "Выберите тариф" });
     return;
   }
-  const updated = await payments().findOneAndUpdate(
+  const doc = await payments().findOne(
     {
-      token,
       userId: new ObjectId(req.user!.id),
-      status: { $in: ["prepared", "pending"] },
+      plan: req.params.plan,
+      status: "pending",
     },
-    { $set: { payerName } },
-    { returnDocument: "after" },
+    { sort: { createdAt: -1 } },
   );
-  if (!updated) {
-    res.status(409).json({ error: "Эту оплату уже нельзя изменить" });
-    return;
-  }
-  if (updated.telegramMessages?.length) {
-    await refreshTelegram(updated);
-  }
-  res.json(publicAttempt(updated));
-});
-
-paymentsRouter.get("/qr/:token", async (req, res) => {
-  const token = readToken(req.params.token);
-  if (!token) {
-    res.status(404).end();
-    return;
-  }
-  const doc = await payments().findOne({ token }, { projection: { token: 1 } });
-  if (!doc?.token) {
-    res.status(404).end();
-    return;
-  }
-  const png = await QRCode.toBuffer(goUrl(doc.token, "qr"), {
-    type: "png",
-    width: 560,
-    margin: 1,
-    errorCorrectionLevel: "M",
-  });
-  res.setHeader("Cache-Control", "private, max-age=3600");
-  res.type("png").send(png);
-});
-
-paymentsRouter.get("/go/:token", goLimiter, async (req, res) => {
-  const token = readToken(req.params.token);
-  if (!token) {
-    res.status(404).type("text").send("Ссылка не найдена");
-    return;
-  }
-  if (req.method === "HEAD" || isPrefetch(req)) {
-    res.setHeader("Cache-Control", "no-store");
-    res.redirect(302, KASPI_PAY_URL);
-    return;
-  }
-  const via: PaymentVia = req.query.via === "qr" ? "qr" : "link";
-  const doc = await payments().findOne({ token });
-  if (!doc) {
-    res.status(404).type("text").send("Ссылка не найдена");
-    return;
-  }
-  if (doc.status === "confirmed" || doc.status === "rejected") {
-    res.setHeader("Cache-Control", "no-store");
-    res.redirect(302, `${publicAppUrl()}/cabinet/payments`);
-    return;
-  }
-
-  const name = payerNameOf(req.query.name);
-  const now = new Date();
-  const claimed = await payments().findOneAndUpdate(
-    { _id: doc._id, status: "prepared" },
-    {
-      $set: {
-        status: "pending",
-        vias: [via],
-        openedAt: now,
-        ...(name ? { payerName: name } : {}),
-      },
-    },
-    { returnDocument: "after" },
-  );
-  const updated =
-    claimed ??
-    (await payments().findOneAndUpdate(
-      { _id: doc._id, status: "pending" },
-      {
-        $addToSet: { vias: via },
-        ...(name ? { $set: { payerName: name } } : {}),
-      },
-      { returnDocument: "after" },
-    ));
-
-  if (updated) {
-    const known = new Set(doc.vias ?? []);
-    if (doc.status === "prepared" || !updated.telegramMessages?.length) {
-      await ensureNotified(updated._id);
-    } else if (!known.has(via) || (name && name !== doc.payerName)) {
-      const fresh = await payments().findOne({ _id: updated._id });
-      if (fresh) await refreshTelegram(fresh);
-    }
-  }
-
-  res.setHeader("Cache-Control", "no-store");
-  res.redirect(302, KASPI_PAY_URL);
+  res.json({ attempt: doc ? publicAttempt(doc) : null });
 });
 
 /* ---------- Admin: /api/admin/payments is mounted from here ---------- */
@@ -520,7 +408,7 @@ export async function handleTelegramUpdate(update: TelegramUpdate): Promise<void
   await rememberTelegramAdmin(message.chat.id);
   await sendTelegramText(
     message.chat.id,
-    "Готово. Когда ученик откроет Kaspi по ссылке или QR, сюда придёт попытка оплаты.",
+    "Готово. Когда ученик нажмёт «Оплатить», сюда придёт попытка оплаты.",
   );
   await notifyUnsentPending();
 }

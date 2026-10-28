@@ -94,13 +94,13 @@ export interface AttemptDoc {
 }
 
 export type PaymentPlan = "single" | "bundle";
-/** prepared = page opened, Kaspi not opened yet. Hidden from lists. */
+/** prepared is legacy; new attempts go straight to pending. */
 export type PaymentStatus = "prepared" | "pending" | "confirmed" | "rejected";
 export type PaymentVia = "link" | "qr";
 
 /**
- * A Kaspi payment. Kaspi sends no callback, so the attempt becomes pending
- * when the student opens our redirect (link or QR). An admin confirms it.
+ * A Kaspi payment. Kaspi sends no callback, so the student presses pay after
+ * transferring; an admin confirms the match in Telegram or the admin page.
  */
 export interface PaymentDoc {
   _id: ObjectId;
@@ -111,8 +111,9 @@ export interface PaymentDoc {
   /** Name the student will type in Kaspi, used to find the transfer. */
   payerName: string;
   status: PaymentStatus;
-  /** Unguessable key for the Kaspi redirect. Absent on older requests. */
+  /** Polling key for the waiting screen. */
   token?: string;
+  /** Legacy scan/link tracking; new attempts store ["link"] for the pay button. */
   vias?: PaymentVia[];
   openedAt?: Date;
   /** Set while a Telegram message is being sent, so a second click does not duplicate it. */

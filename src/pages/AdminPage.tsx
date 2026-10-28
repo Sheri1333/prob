@@ -1342,9 +1342,9 @@ export function AdminPage() {
               <div>
                 <h1>Оплаты Kaspi</h1>
                 <p>
-                  Ученик открывает Kaspi по ссылке или QR — попытка сразу появляется здесь и в
-                  Telegram. Найдите перевод по имени и сумме и подтвердите: попытки ЕНТ
-                  добавятся на баланс.
+                  Ученик оплачивает через Kaspi QR и нажимает «Оплатить» — заявка приходит
+                  сюда и в Telegram. Найдите перевод по имени и сумме и подтвердите: попытки
+                  ЕНТ добавятся на баланс.
                 </p>
               </div>
               <div className="admin-payments__actions">
@@ -1367,7 +1367,7 @@ export function AdminPage() {
             {paymentRows.length === 0 ? (
               <div className="admin-empty">
                 {paymentFilter === "pending"
-                  ? "Новых оплат нет. Заявка появится, когда ученик откроет ссылку или QR."
+                  ? "Новых оплат нет. Заявка появится, когда ученик нажмёт «Оплатить»."
                   : "Оплат пока не было."}
               </div>
             ) : (
@@ -1390,15 +1390,6 @@ export function AdminPage() {
                         <td>{formatDate(row.createdAt)}</td>
                         <td>
                           <strong>{row.payerName}</strong>
-                          {row.vias && row.vias.length > 0 && (
-                            <div className="admin-hint">
-                              {row.vias.includes("link") && row.vias.includes("qr")
-                                ? "Ссылка и QR"
-                                : row.vias.includes("qr")
-                                  ? "QR"
-                                  : "Ссылка"}
-                            </div>
-                          )}
                         </td>
                         <td>
                           {row.user ? (

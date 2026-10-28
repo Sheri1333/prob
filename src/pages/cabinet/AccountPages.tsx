@@ -100,8 +100,8 @@ export function PaymentsPage() {
         {!wallet || wallet.requests.length === 0 ? (
           <p className="cab-empty">
             {kz
-              ? "Төлем әлі болған жоқ. Төлем бетінде Kaspi сілтемесін немесе QR ашқанда, ол осында шығады."
-              : "Оплат пока не было. Заявка появится здесь, когда на странице оплаты откроете ссылку Kaspi или QR."}
+              ? "Төлем әлі болған жоқ. Kaspi арқылы төлеп, «Төлеу» батырмасын бассаңыз, ол осында шығады."
+              : "Оплат пока не было. Когда оплатите через Kaspi и нажмёте «Оплатить», она появится здесь."}
           </p>
         ) : (
           <>
@@ -120,19 +120,6 @@ export function PaymentsPage() {
                   </span>
                   <span className="payments-list__meta">
                     {formatDate(r.createdAt)}, {kz ? "Kaspi-дегі аты" : "имя в Kaspi"}: {r.payerName}
-                    {r.vias && r.vias.length > 0
-                      ? `, ${
-                          r.vias.includes("link") && r.vias.includes("qr")
-                            ? kz
-                              ? "сілтеме және QR"
-                              : "ссылка и QR"
-                            : r.vias.includes("qr")
-                              ? "QR"
-                              : kz
-                                ? "сілтеме"
-                                : "ссылка"
-                        }`
-                      : ""}
                   </span>
                   <span className={`payments-list__status payments-list__status--${r.status}`}>
                     {r.status === "pending"
