@@ -32,8 +32,8 @@ function cleanName(value: string): string {
 }
 
 /**
- * Student pays with the static Kaspi QR / link, then presses pay. We notify
- * Telegram and show a short waiting screen while an admin confirms.
+ * Student presses pay, Kaspi opens, and we show a short waiting screen while
+ * an admin confirms the transfer in Telegram.
  */
 export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
   const kz = lang === "kz";
@@ -191,8 +191,8 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
               <h2>{kz ? "Kaspi-де төлеңіз" : "Оплатите в Kaspi"}</h2>
               <p>
                 {kz
-                  ? "Телефоннан батырманы басыңыз, ал компьютерден QR-кодты Kaspi қосымшасымен сканерлеңіз."
-                  : "С телефона нажмите кнопку, с компьютера отсканируйте QR-код в приложении Kaspi."}
+                  ? "«Төлеу» батырмасын басыңыз — Kaspi ашылады. Сол жерде төлеп, осы бетте тексеруді күтіңіз."
+                  : "Нажмите «Оплатить» — откроется Kaspi. Оплатите там и подождите проверку на этой странице."}
               </p>
               <dl className="pay-facts">
                 <div>
@@ -219,7 +219,11 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
                     ? "Төлемді аты-жөні мен сомасы бойынша табамыз, сондықтан екеуі де сәйкес келуі керек."
                     : "Мы находим перевод по имени и сумме, поэтому оба должны совпадать."}
                 </p>
-                <button type="submit" className="v2-btn" disabled={busy || amount === null}>
+                <button
+                  type="submit"
+                  className="v2-btn pay-steps__kaspi"
+                  disabled={busy || amount === null}
+                >
                   {busy
                     ? kz
                       ? "Жіберілуде…"
@@ -231,20 +235,6 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
               </form>
             </li>
           </ol>
-
-          <figure className="pay-qr">
-            <img
-              src="/kaspi-qr.png"
-              width={350}
-              height={354}
-              alt={kz ? "Талапкер үшін Kaspi QR коды" : "Kaspi QR-код для оплаты Талапкер"}
-            />
-            <figcaption>
-              {kz
-                ? "Kaspi қосымшасында «Kaspi QR» арқылы сканерлеңіз"
-                : "Отсканируйте через «Kaspi QR» в приложении Kaspi"}
-            </figcaption>
-          </figure>
         </div>
       )}
     </div>
