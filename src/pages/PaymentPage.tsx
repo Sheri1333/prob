@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type MouseEvent } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import {
   api,
@@ -29,6 +29,10 @@ function isPlan(value: string | undefined): value is PaymentPlan {
 
 function cleanName(value: string): string {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function waitingKey(plan: PaymentPlan): string {
+  return `talapker_pay_waiting_${plan}`;
 }
 
 /**
@@ -64,12 +68,24 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
   useEffect(() => {
     if (!user || !isPlan(plan)) return;
     let gone = false;
+    if (sessionStorage.getItem(waitingKey(plan))) {
+      setBusy(true);
+    }
     api
       .pendingPayment(plan)
       .then(({ attempt: row }) => {
-        if (!gone && row) setAttempt(row);
+        if (gone) return;
+        if (row) {
+          setAttempt(row);
+          sessionStorage.removeItem(waitingKey(plan));
+        } else {
+          sessionStorage.removeItem(waitingKey(plan));
+          setBusy(false);
+        }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!gone) setBusy(false);
+      });
     return () => {
       gone = true;
     };
@@ -81,7 +97,10 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
     const timer = window.setInterval(() => {
       api
         .paymentAttempt(token)
-        .then((row) => setAttempt(row))
+        .then((row) => {
+          setAttempt(row);
+          if (row.status !== "pending") sessionStorage.removeItem(waitingKey(plan));
+        })
         .catch(() => undefined);
     }, 4000);
     return () => window.clearInterval(timer);
@@ -100,29 +119,35 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
     : (attempt?.amountTenge ?? null);
   const amountText = amount === null ? "… ₸" : `${amount.toLocaleString("ru-RU")} ₸`;
   const sessions = plan === "single" ? 1 : 3;
-  const waiting = attempt?.status === "pending";
+  const waiting = attempt?.status === "pending" || (busy && !attempt && !error);
   const paid = attempt?.status === "confirmed";
   const rejected = attempt?.status === "rejected";
 
-  async function onPay(e: FormEvent) {
-    e.preventDefault();
-    if (!isPlan(plan)) return;
+  function startKaspiPay(): boolean {
+    if (!isPlan(plan)) return false;
     const name = cleanName(payerName);
     if (name.length < 2) {
       setError(kz ? "Kaspi-дегі аты-жөніңізді жазыңыз." : "Укажите ФИО для Kaspi.");
-      return;
+      return false;
     }
+    if (amount === null) return false;
     setError("");
-    setBusy(true);
-    try {
-      const row = await api.submitPayment({ plan, payerName: name });
-      setAttempt(row);
-      window.open(KASPI_PAY_URL, "_blank", "noopener,noreferrer");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка");
-    } finally {
-      setBusy(false);
-    }
+    sessionStorage.setItem(waitingKey(plan), "1");
+    // keepalive: the page unloads into Kaspi; the request must still finish.
+    void api.submitPayment({ plan, payerName: name }, { keepalive: true }).catch(() => {
+      sessionStorage.removeItem(waitingKey(plan));
+    });
+    return true;
+  }
+
+  function onPayClick(e: MouseEvent<HTMLAnchorElement>) {
+    if (!startKaspiPay()) e.preventDefault();
+  }
+
+  function onPaySubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!startKaspiPay()) return;
+    window.location.assign(KASPI_PAY_URL);
   }
 
   return (
@@ -164,12 +189,17 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
           </p>
           <p className="pay-done__hint">
             {kz
-              ? `Аты-жөні «${attempt.payerName}», сома ${amountText}.`
-              : `ФИО «${attempt.payerName}», сумма ${amountText}.`}
+              ? `Аты-жөні «${attempt?.payerName || payerName}», сома ${amountText}.`
+              : `ФИО «${attempt?.payerName || payerName}», сумма ${amountText}.`}
           </p>
-          <Link to="/cabinet/payments" className="v2-btn v2-btn--quiet">
-            {kz ? "Төлемдерге өту" : "К оплатам"}
-          </Link>
+          <div className="pay-done__actions">
+            <a className="v2-btn" href={KASPI_PAY_URL}>
+              {kz ? "Kaspi-ді қайта ашу" : "Открыть Kaspi снова"}
+            </a>
+            <Link to="/cabinet/payments" className="v2-btn v2-btn--quiet">
+              {kz ? "Төлемдерге өту" : "К оплатам"}
+            </Link>
+          </div>
         </section>
       ) : (
         <div className="pay-layout">
@@ -191,8 +221,8 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
               <h2>{kz ? "Kaspi-де төлеңіз" : "Оплатите в Kaspi"}</h2>
               <p>
                 {kz
-                  ? "«Төлеу» батырмасын басыңыз — Kaspi ашылады. Сол жерде төлеп, осы бетте тексеруді күтіңіз."
-                  : "Нажмите «Оплатить» — откроется Kaspi. Оплатите там и подождите проверку на этой странице."}
+                  ? "«Төлеу» батырмасын басыңыз — Kaspi қосымшасы ашылады. Төлеген соң осы бетке қайтыңыз, тексеру 1–2 минутқа созылады."
+                  : "Нажмите «Оплатить» — откроется приложение Kaspi. После оплаты вернитесь на эту страницу: проверка займёт 1–2 минуты."}
               </p>
               <dl className="pay-facts">
                 <div>
@@ -200,7 +230,7 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
                   <dd>{amountText}</dd>
                 </div>
               </dl>
-              <form className="pay-form" onSubmit={(e) => void onPay(e)}>
+              <form className="pay-form" onSubmit={onPaySubmit}>
                 <label className="field">
                   <span className="field__label">
                     {kz ? "Kaspi-де жазатын аты-жөніңіз" : "ФИО, которое укажете в Kaspi"}
@@ -219,18 +249,17 @@ export function PaymentPage({ lang, onToggleLang }: PaymentPageProps) {
                     ? "Төлемді аты-жөні мен сомасы бойынша табамыз, сондықтан екеуі де сәйкес келуі керек."
                     : "Мы находим перевод по имени и сумме, поэтому оба должны совпадать."}
                 </p>
-                <button
-                  type="submit"
-                  className="v2-btn pay-steps__kaspi"
-                  disabled={busy || amount === null}
+                {/* Real <a href>: only a user gesture navigation opens the Kaspi app on phones. */}
+                <a
+                  className={`v2-btn pay-steps__kaspi${amount === null ? " is-disabled" : ""}`}
+                  href={KASPI_PAY_URL}
+                  onClick={onPayClick}
+                  aria-disabled={amount === null}
                 >
-                  {busy
-                    ? kz
-                      ? "Жіберілуде…"
-                      : "Отправляем…"
-                    : kz
-                      ? "Төлеу"
-                      : "Оплатить"}
+                  {kz ? "Төлеу" : "Оплатить"}
+                </a>
+                <button type="submit" className="visually-hidden">
+                  {kz ? "Төлеу" : "Оплатить"}
                 </button>
               </form>
             </li>

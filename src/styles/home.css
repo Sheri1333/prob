@@ -160,6 +160,7 @@
   color: var(--brand);
 }
 
+.v2-btn.is-disabled,
 .v2-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;

@@ -459,10 +459,14 @@ export const api = {
     }>("/payments/me");
   },
 
-  submitPayment(body: { plan: PaymentPlan; payerName: string }) {
+  submitPayment(
+    body: { plan: PaymentPlan; payerName: string },
+    opts?: { keepalive?: boolean },
+  ) {
     return request<PaymentAttempt>("/payments/attempt", {
       method: "POST",
       body: JSON.stringify(body),
+      keepalive: opts?.keepalive,
     });
   },
 

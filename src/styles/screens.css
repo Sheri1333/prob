@@ -1496,6 +1496,13 @@
   font-size: 0.95rem;
 }
 
+.pay-done__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 /* ---------- Profile: balance and payments ---------- */
 
 .balance {
