@@ -10,7 +10,7 @@ import {
   type PaymentPlan,
 } from "../db.js";
 import { rateLimit } from "../rateLimit.js";
-import { getPricing, PLAN_SESSIONS } from "../settings.js";
+import { getPricing, getSubjectPrices, PLAN_SESSIONS } from "../settings.js";
 import {
   answerTelegramCallback,
   bindCode,
@@ -43,6 +43,7 @@ function publicPayment(doc: PaymentDoc) {
   return {
     id: doc._id.toHexString(),
     plan: doc.plan,
+    subjectKey: doc.subjectKey ?? null,
     sessions: doc.sessions,
     amountTenge: doc.amountTenge,
     payerName: doc.payerName,
@@ -62,6 +63,12 @@ function publicAttempt(doc: PaymentDoc) {
 
 function isPlan(value: unknown): value is PaymentPlan {
   return value === "single" || value === "bundle";
+}
+
+function subjectKeyOf(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const key = value.trim().toLowerCase();
+  return key.length >= 1 && key.length <= 80 ? key : null;
 }
 
 function readToken(value: unknown): string | null {
@@ -90,7 +97,9 @@ function attemptText(
     "",
     `Пользователь: ${user.name}`,
     `Почта: ${user.email}`,
-    `Тариф: ${doc.plan === "single" ? "Полный ЕНТ" : "3 полных ЕНТ"} (${doc.sessions})`,
+    doc.plan === "subject"
+      ? `Тариф: отдельный предмет «${doc.subjectKey}»`
+      : `Тариф: ${doc.plan === "single" ? "Полный ЕНТ" : "3 полных ЕНТ"} (${doc.sessions})`,
     `Сумма: ${doc.amountTenge.toLocaleString("ru-RU")} ₸`,
     `Имя в Kaspi: ${doc.payerName}`,
     `Время: ${when}`,
@@ -194,11 +203,20 @@ export async function applyDecision(
     return existing ? "done" : "missing";
   }
   if (status === "confirmed") {
-    await users().updateOne({ _id: updated.userId }, { $inc: { examCredits: updated.sessions } });
+    if (updated.plan === "subject" && updated.subjectKey) {
+      await users().updateOne(
+        { _id: updated.userId },
+        { $addToSet: { subjectAccess: updated.subjectKey } },
+      );
+    } else {
+      await users().updateOne({ _id: updated.userId }, { $inc: { examCredits: updated.sessions } });
+    }
   }
   const line =
     status === "confirmed"
-      ? `Подтверждено. Начислено попыток ЕНТ: ${updated.sessions}`
+      ? updated.plan === "subject"
+        ? `Подтверждено. Открыт доступ к предмету «${updated.subjectKey}»`
+        : `Подтверждено. Начислено попыток ЕНТ: ${updated.sessions}`
       : "Отклонено. Перевод не засчитан.";
   await refreshTelegram(updated, line);
   return updated;
@@ -207,7 +225,7 @@ export async function applyDecision(
 paymentsRouter.get("/me", authRequired, async (req: AuthedRequest, res) => {
   const userId = new ObjectId(req.user!.id);
   const [row, list] = await Promise.all([
-    users().findOne({ _id: userId }, { projection: { examCredits: 1 } }),
+    users().findOne({ _id: userId }, { projection: { examCredits: 1, subjectAccess: 1 } }),
     payments()
       .find({ userId, status: { $ne: "prepared" } })
       .sort({ createdAt: -1 })
@@ -216,6 +234,7 @@ paymentsRouter.get("/me", authRequired, async (req: AuthedRequest, res) => {
   ]);
   res.json({
     credits: row?.examCredits ?? 0,
+    subjects: row?.subjectAccess ?? [],
     unlimited: req.user!.role === "admin",
     requests: list.map(publicPayment),
   });
@@ -223,11 +242,13 @@ paymentsRouter.get("/me", authRequired, async (req: AuthedRequest, res) => {
 
 /** Creates a pending payment and notifies Telegram when the student presses pay. */
 paymentsRouter.post("/attempt", authRequired, attemptLimiter, async (req: AuthedRequest, res) => {
-  const body = (req.body ?? {}) as { plan?: unknown; payerName?: unknown };
-  if (!isPlan(body.plan)) {
+  const body = (req.body ?? {}) as { plan?: unknown; payerName?: unknown; subjectKey?: unknown };
+  const isSubject = body.plan === "subject";
+  if (!isSubject && !isPlan(body.plan)) {
     res.status(400).json({ error: "Выберите тариф" });
     return;
   }
+  const plan = body.plan as PaymentPlan;
   const payerName = payerNameOf(body.payerName) ?? payerNameOf(req.user!.name);
   if (!payerName) {
     res.status(400).json({ error: "Укажите имя, которое вы введёте в Kaspi" });
@@ -235,8 +256,27 @@ paymentsRouter.post("/attempt", authRequired, attemptLimiter, async (req: Authed
   }
 
   const userId = new ObjectId(req.user!.id);
+  // A subject is priced by the admin; plan and key together identify the purchase.
+  const subjectKey = isSubject ? subjectKeyOf(body.subjectKey) : null;
+  const subjectPrice = subjectKey ? (await getSubjectPrices())[subjectKey] : undefined;
+  if (isSubject) {
+    if (!subjectKey || !subjectPrice) {
+      res.status(400).json({ error: "Этот предмет нельзя купить отдельно" });
+      return;
+    }
+    const owned = await users().findOne(
+      { _id: userId, subjectAccess: subjectKey },
+      { projection: { _id: 1 } },
+    );
+    if (owned) {
+      res.status(409).json({ error: "Этот предмет уже открыт в вашем кабинете" });
+      return;
+    }
+  }
+  const scope = subjectKey ? { plan, subjectKey } : { plan };
+
   const existing = await payments().findOne(
-    { userId, plan: body.plan, status: "pending" },
+    { userId, ...scope, status: "pending" },
     { sort: { createdAt: -1 } },
   );
   if (existing) {
@@ -267,9 +307,14 @@ paymentsRouter.post("/attempt", authRequired, attemptLimiter, async (req: Authed
   const doc: PaymentDoc = {
     _id: new ObjectId(),
     userId,
-    plan: body.plan,
-    sessions: PLAN_SESSIONS[body.plan],
-    amountTenge: body.plan === "single" ? pricing.singlePriceTenge : pricing.bundlePriceTenge,
+    plan,
+    ...(subjectKey ? { subjectKey } : {}),
+    sessions: subjectKey ? 0 : PLAN_SESSIONS[plan as "single" | "bundle"],
+    amountTenge: subjectKey
+      ? subjectPrice!
+      : plan === "single"
+        ? pricing.singlePriceTenge
+        : pricing.bundlePriceTenge,
     payerName,
     status: "pending",
     token: randomBytes(16).toString("hex"),
@@ -297,6 +342,24 @@ paymentsRouter.get("/attempt/:token", authRequired, async (req: AuthedRequest, r
     return;
   }
   res.json(publicAttempt(doc));
+});
+
+paymentsRouter.get("/pending/subject/:key", authRequired, async (req: AuthedRequest, res) => {
+  const subjectKey = subjectKeyOf(req.params.key);
+  if (!subjectKey) {
+    res.status(400).json({ error: "Выберите предмет" });
+    return;
+  }
+  const doc = await payments().findOne(
+    {
+      userId: new ObjectId(req.user!.id),
+      plan: "subject",
+      subjectKey,
+      status: "pending",
+    },
+    { sort: { createdAt: -1 } },
+  );
+  res.json({ attempt: doc ? publicAttempt(doc) : null });
 });
 
 paymentsRouter.get("/pending/:plan", authRequired, async (req: AuthedRequest, res) => {

@@ -68,6 +68,7 @@ export function App() {
             <Route path="/reset" element={<ResetPasswordPage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/verify" element={<VerifyEmailPage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/pay/:plan" element={<PaymentPage lang={lang} onToggleLang={toggleLang} />} />
+            <Route path="/pay/subject/:subjectKey" element={<PaymentPage lang={lang} onToggleLang={toggleLang} />} />
             <Route path="/profile" element={<Navigate to="/cabinet" replace />} />
             <Route
               path="/cabinet"

@@ -109,13 +109,17 @@ export function PaymentsPage() {
               {wallet.requests.map((r) => (
                 <li key={r.id}>
                   <span className="payments-list__what">
-                    {r.sessions === 1
+                    {r.plan === "subject"
                       ? kz
-                        ? "1 толық ҰБТ"
-                        : "1 полный ЕНТ"
-                      : kz
-                        ? `${r.sessions} толық ҰБТ`
-                        : `${r.sessions} полных ЕНТ`}
+                        ? `Пән: ${r.subjectKey}`
+                        : `Предмет: ${r.subjectKey}`
+                      : r.sessions === 1
+                        ? kz
+                          ? "1 толық ҰБТ"
+                          : "1 полный ЕНТ"
+                        : kz
+                          ? `${r.sessions} толық ҰБТ`
+                          : `${r.sessions} полных ЕНТ`}
                     , {r.amountTenge.toLocaleString("ru-RU")} ₸
                   </span>
                   <span className="payments-list__meta">

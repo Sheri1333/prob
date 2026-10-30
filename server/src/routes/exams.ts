@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { ObjectId } from "mongodb";
 import {
   attempts,
@@ -30,7 +30,7 @@ import {
   type EntBlockKind,
 } from "../ent.js";
 import { scoreEntSection, stripAnswers, type AnswerValue } from "../scoring.js";
-import { getPricing } from "../settings.js";
+import { getPricing, getSubjectPrices, subjectPools } from "../settings.js";
 import {
   countFresh,
   emptyHistory,
@@ -127,7 +127,7 @@ function publicInProgress(session: ExamSessionDoc, now = new Date()) {
   return {
     status: "in_progress" as const,
     sessionId: session._id,
-    durationMinutes: ENT_TOTAL_MINUTES,
+    durationMinutes: Math.round((session.endsAt.getTime() - session.startedAt.getTime()) / 60_000),
     comboId: session.comboId,
     profileSubjects: session.profileSubjects,
     startedAt: session.startedAt.toISOString(),
@@ -697,6 +697,99 @@ async function loadSeenHistory(
   return history;
 }
 
+/** Subjects the admin prices on their own, with whether this account already has them. */
+examsRouter.get("/subjects", optionalAuth, async (req: AuthedRequest, res) => {
+  const [prices, pools, owner] = await Promise.all([
+    getSubjectPrices(),
+    subjectPools(),
+    req.user
+      ? users().findOne({ _id: new ObjectId(req.user.id) }, { projection: { subjectAccess: 1 } })
+      : null,
+  ]);
+  const owned = new Set(owner?.subjectAccess ?? []);
+  const isAdmin = req.user?.role === "admin";
+  res.json({
+    subjects: pools
+      .filter((pool) => prices[pool.key] > 0)
+      .map((pool) => ({
+        key: pool.key,
+        title: pool.label,
+        price: prices[pool.key],
+        owned: isAdmin || owned.has(pool.key),
+      })),
+  });
+});
+
+/**
+ * One subject bought on its own: a single test, the test's own timer, no
+ * exam credits spent. The account must hold the subject (admins always can).
+ */
+async function startSubjectExam(
+  req: AuthedRequest,
+  res: Response,
+  subjectKey: string,
+  excludeTestIds: unknown,
+) {
+  const userOid = new ObjectId(req.user!.id);
+  if (req.user!.role !== "admin") {
+    const owner = await users().findOne({ _id: userOid }, { projection: { subjectAccess: 1 } });
+    if (!owner?.subjectAccess?.includes(subjectKey)) {
+      res.status(403).json({
+        error: "Сначала купите этот предмет",
+        code: "no_subject_access",
+      });
+      return;
+    }
+  }
+
+  const rows = await tests().find().toArray();
+  const pool = rows.filter((t) => subjectPoolKey(t.subject) === subjectKey);
+  const history = await loadSeenHistory(
+    userOid,
+    new Map(rows.map((t) => [t._id, t])),
+    excludeTestIds,
+  );
+  const picked = pickFreshVariant(pool, history, new Set())?.test;
+  if (!picked) {
+    res.status(400).json({ error: "Нет пробного теста для этого предмета. Добавьте его в админке." });
+    return;
+  }
+
+  await examSessions().updateMany(
+    { userId: userOid, status: "in_progress" },
+    { $set: { status: "abandoned" } },
+  );
+  const shuffled = shuffleQuestionsForSession(stripAnswers(picked.questions));
+  const now = new Date();
+  const session: ExamSessionDoc = {
+    _id: newTestId(),
+    userId: userOid,
+    comboId: null,
+    profileSubjects: [picked.subject],
+    startedAt: now,
+    endsAt: new Date(now.getTime() + (picked.durationMinutes || ENT_TOTAL_MINUTES) * 60 * 1000),
+    status: "in_progress",
+    sectionIndex: 0,
+    answersByTest: { [picked._id]: {} },
+    currentIndexByTest: { [picked._id]: 0 },
+    sections: [
+      {
+        block: blockForSubject(picked.subject),
+        testId: picked._id,
+        subject: picked.subject,
+        title: picked.title,
+        titleKz: picked.titleKz,
+        questionCount: picked.questionCount,
+        questions: shuffled.questions,
+        optionMaps: shuffled.optionMaps,
+      },
+    ],
+    usedTestIds: [picked._id],
+  };
+  await examSessions().insertOne(session);
+  res.status(201).json(publicInProgress(session, now));
+}
+
 /** Per block and profile subject: variants in the bank and unseen by this student. */
 examsRouter.get("/variants", authRequired, async (req: AuthedRequest, res) => {
   const rows = await tests().find().toArray();
@@ -740,7 +833,13 @@ examsRouter.post("/start", authRequired, startLimiter, async (req: AuthedRequest
     comboId?: string;
     profileSubjects?: string[];
     excludeTestIds?: string[];
+    subjectKey?: string;
   };
+
+  if (typeof body.subjectKey === "string" && body.subjectKey.trim()) {
+    await startSubjectExam(req, res, body.subjectKey.trim().toLowerCase(), body.excludeTestIds);
+    return;
+  }
 
   let profileLabels: string[] = [];
 

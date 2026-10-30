@@ -7,7 +7,13 @@ import { validateTestPayload, type Question } from "../scoring.js";
 import { persistCoverImage, persistQuestionImages, storeImage } from "../gridfs.js";
 import { importTestFile } from "../importTest.js";
 import { isUuid, newTestId } from "../ids.js";
-import { getPricing, savePricing } from "../settings.js";
+import {
+  getPricing,
+  getSubjectPrices,
+  savePricing,
+  saveSubjectPrices,
+  subjectPools,
+} from "../settings.js";
 import { buildEntPoolCoverage } from "../ent.js";
 import { applyAnswerKeys, parseAnswerKeyText } from "../answerKeys.js";
 import {
@@ -60,6 +66,37 @@ adminRouter.put("/pricing", async (req, res) => {
       bundlePriceTenge?: number;
     };
     res.json(await savePricing(body));
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Ошибка сохранения цен" });
+  }
+});
+
+/** Every subject with its price; 0 means it is not sold on its own. */
+adminRouter.get("/subject-prices", async (_req, res) => {
+  const [prices, pools] = await Promise.all([getSubjectPrices(), subjectPools()]);
+  res.json({
+    subjects: pools.map((pool) => ({
+      key: pool.key,
+      label: pool.label,
+      testCount: pool.testCount,
+      priceTenge: prices[pool.key] ?? 0,
+    })),
+  });
+});
+
+adminRouter.put("/subject-prices", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as { prices?: unknown };
+    await saveSubjectPrices(body.prices);
+    const [prices, pools] = await Promise.all([getSubjectPrices(), subjectPools()]);
+    res.json({
+      subjects: pools.map((pool) => ({
+        key: pool.key,
+        label: pool.label,
+        testCount: pool.testCount,
+        priceTenge: prices[pool.key] ?? 0,
+      })),
+    });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : "Ошибка сохранения цен" });
   }

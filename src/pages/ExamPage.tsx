@@ -60,6 +60,8 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
   const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const [searchParams] = useSearchParams();
   const combo = searchParams.get("combo");
+  // One subject bought on its own (/exam?subject=<key>), not a full ЕНТ.
+  const subject = searchParams.get("subject");
   const [draft, setDraft] = useState<ExamDraft | null>(null);
   const [loadError, setLoadError] = useState("");
   // 402 from /exams/start: the account has no paid ENT sessions left.
@@ -131,7 +133,9 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
           ? `/exam/${routeSessionId}`
           : combo
             ? `/exam?combo=${encodeURIComponent(combo)}`
-            : "/exam";
+            : subject
+              ? `/exam?subject=${encodeURIComponent(subject)}`
+              : "/exam";
         navigate("/login", { replace: true, state: { from: back } });
         return;
       }
@@ -144,6 +148,18 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
       if (combo) {
         const session = await api.startExam({
           comboId: combo,
+          excludeTestIds: loadUsedVariants(),
+        });
+        if (cancelled) return;
+        if (applySession(session)) {
+          navigate(`/exam/${session.sessionId}`, { replace: true });
+        }
+        return;
+      }
+
+      if (subject) {
+        const session = await api.startExam({
+          subjectKey: subject,
           excludeTestIds: loadUsedVariants(),
         });
         if (cancelled) return;
@@ -185,7 +201,7 @@ export function ExamPage({ lang, onToggleLang }: ExamPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [applySession, combo, navigate, routeSessionId]);
+  }, [applySession, combo, subject, navigate, routeSessionId]);
 
   const persistProgress = useCallback(
     async (next: ExamDraft) => {

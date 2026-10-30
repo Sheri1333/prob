@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, type EntPricing } from "../api/client";
+import { api, type EntPricing, type PricedSubject } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SiteFooter } from "../components/SiteFooter";
@@ -37,6 +37,8 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
   const [balance, setBalance] = useState<{ credits: number; unlimited: boolean } | null>(
     null,
   );
+  // Subjects the admin sells one by one; `owned` depends on the signed-in account.
+  const [subjects, setSubjects] = useState<PricedSubject[]>([]);
   const [comboModalOpen, setComboModalOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(
@@ -99,6 +101,19 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
     };
   }, [user]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getSubjects()
+      .then(({ subjects: rows }) => {
+        if (!cancelled) setSubjects(rows);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   const canStart = !!balance && (balance.unlimited || balance.credits > 0);
 
   const openStart = () => {
@@ -135,6 +150,14 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
       return;
     }
     navigate(`/pay/${plan}`);
+  };
+
+  const buySubject = (key: string) => {
+    if (!user) {
+      navigate("/login", { state: { from: `/pay/subject/${key}`, notice: "pricing" } });
+      return;
+    }
+    navigate(`/pay/subject/${encodeURIComponent(key)}`);
   };
 
   const resumeExam = () => {
@@ -392,6 +415,41 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
           </li>
         </ul>
       </section>
+
+      {subjects.length > 0 && (
+        <section className="v2-section" id="subjects">
+          <h2>{kz ? "Жеке пәндер" : "Отдельные предметы"}</h2>
+          <p className="v2-section__intro">
+            {kz
+              ? "Тек бір пән керек болса, сол пәннің тестін ғана тапсырасыз."
+              : "Если нужен один предмет, купите его отдельно и проходите только его тест."}
+          </p>
+          <ul className="plans">
+            {subjects.map((s) => (
+              <li className="plan" key={s.key}>
+                <h3 className="plan__name">{s.title}</h3>
+                <span className="plan__price">{`${s.price.toLocaleString("ru-RU")} ₸`}</span>
+                {s.owned ? (
+                  <Link
+                    className="v2-btn"
+                    to={`/exam?subject=${encodeURIComponent(s.key)}`}
+                  >
+                    {kz ? "Тестті бастау" : "Начать тест"}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    className="v2-btn v2-btn--quiet"
+                    onClick={() => buySubject(s.key)}
+                  >
+                    {kz ? "Сатып алу" : "Купить"}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="v2-section">
         <h2>{kz ? "Қалай өтеді" : "Как это проходит"}</h2>

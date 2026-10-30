@@ -49,6 +49,8 @@ export interface UserDoc {
   resetExpiresAt?: Date | null;
   /** Paid full ENT sessions left; one is spent when an exam starts. */
   examCredits?: number;
+  /** Pool keys of subjects bought one by one (see subjectPoolKey). */
+  subjectAccess?: string[];
 }
 
 export interface TestDoc {
@@ -77,6 +79,8 @@ export interface SettingsDoc {
   trialEnabled?: boolean;
   singlePriceTenge?: number;
   bundlePriceTenge?: number;
+  /** subject-prices doc: pool key → tenge. */
+  prices?: Record<string, number>;
   updatedAt?: Date;
 }
 
@@ -93,7 +97,8 @@ export interface AttemptDoc {
   sessionId?: string;
 }
 
-export type PaymentPlan = "single" | "bundle";
+/** subject = one subject bought on its own; subjectKey says which one. */
+export type PaymentPlan = "single" | "bundle" | "subject";
 /** prepared is legacy; new attempts go straight to pending. */
 export type PaymentStatus = "prepared" | "pending" | "confirmed" | "rejected";
 export type PaymentVia = "link" | "qr";
@@ -106,6 +111,8 @@ export interface PaymentDoc {
   _id: ObjectId;
   userId: ObjectId;
   plan: PaymentPlan;
+  /** Only for plan "subject". */
+  subjectKey?: string;
   sessions: number;
   amountTenge: number;
   /** Name the student will type in Kaspi, used to find the transfer. */

@@ -90,7 +90,23 @@ export interface EntPricing {
   bundlePriceTenge: number;
 }
 
-export type PaymentPlan = "single" | "bundle";
+export type PaymentPlan = "single" | "bundle" | "subject";
+
+export interface AdminSubjectPrice {
+  key: string;
+  label: string;
+  testCount: number;
+  /** 0 means the subject is not sold on its own. */
+  priceTenge: number;
+}
+
+/** A subject the admin sells on its own. */
+export interface PricedSubject {
+  key: string;
+  title: string;
+  price: number;
+  owned: boolean;
+}
 
 export interface AnswerTally {
   total: number;
@@ -129,6 +145,7 @@ export interface ExamAnalytics {
 export interface PaymentRequest {
   id: string;
   plan: PaymentPlan;
+  subjectKey?: string | null;
   sessions: number;
   amountTenge: number;
   payerName: string;
@@ -226,10 +243,15 @@ export const api = {
     return request<EntPricing>("/exams/pricing");
   },
 
+  getSubjects() {
+    return request<{ subjects: PricedSubject[] }>("/exams/subjects");
+  },
+
   startExam(body: {
     comboId?: string;
     profileSubjects?: string[];
     excludeTestIds?: string[];
+    subjectKey?: string;
   }) {
     return request<ExamStartResponse>("/exams/start", {
       method: "POST",
@@ -454,13 +476,14 @@ export const api = {
   myPayments() {
     return request<{
       credits: number;
+      subjects: string[];
       unlimited: boolean;
       requests: PaymentRequest[];
     }>("/payments/me");
   },
 
   submitPayment(
-    body: { plan: PaymentPlan; payerName: string },
+    body: { plan: PaymentPlan; payerName: string; subjectKey?: string },
     opts?: { keepalive?: boolean },
   ) {
     return request<PaymentAttempt>("/payments/attempt", {
@@ -473,6 +496,12 @@ export const api = {
   pendingPayment(plan: PaymentPlan) {
     return request<{ attempt: PaymentAttempt | null }>(
       "/payments/pending/" + encodeURIComponent(plan),
+    );
+  },
+
+  pendingSubjectPayment(subjectKey: string) {
+    return request<{ attempt: PaymentAttempt | null }>(
+      "/payments/pending/subject/" + encodeURIComponent(subjectKey),
     );
   },
 
@@ -578,6 +607,17 @@ export const api = {
     return request<EntPricing>("/admin/pricing", {
       method: "PUT",
       body: JSON.stringify(body),
+    });
+  },
+
+  adminGetSubjectPrices() {
+    return request<{ subjects: AdminSubjectPrice[] }>("/admin/subject-prices");
+  },
+
+  adminSaveSubjectPrices(prices: Record<string, number>) {
+    return request<{ subjects: AdminSubjectPrice[] }>("/admin/subject-prices", {
+      method: "PUT",
+      body: JSON.stringify({ prices }),
     });
   },
 

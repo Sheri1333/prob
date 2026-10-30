@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
-import { api, type AdminPaymentRequest } from "../api/client";
+import { api, type AdminPaymentRequest, type AdminSubjectPrice } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { AnswerKeyEditor } from "../components/admin/AnswerKeyEditor";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -19,7 +19,11 @@ import { TestPreview } from "../components/admin/TestPreview";
 type Tab = "dashboard" | "tests" | "editor" | "pricing" | "payments" | "email" | "users";
 const TABS: Tab[] = ["dashboard", "tests", "editor", "pricing", "payments", "email", "users"];
 
-const PLAN_LABEL = { single: "1 ЕНТ", bundle: "3 ЕНТ" } as const;
+const PLAN_LABEL = { single: "1 ЕНТ", bundle: "3 ЕНТ", subject: "Предмет" } as const;
+
+function subjectDraftFrom(subjects: AdminSubjectPrice[]): Record<string, string> {
+  return Object.fromEntries(subjects.map((s) => [s.key, String(s.priceTenge)]));
+}
 const PAYMENT_STATUS_LABEL = {
   pending: "Ждёт проверки",
   confirmed: "Подтверждена",
@@ -103,6 +107,10 @@ export function AdminPage() {
     bundlePriceTenge: "1250",
   });
   const [savingPricing, setSavingPricing] = useState(false);
+  const [subjectPrices, setSubjectPrices] = useState<AdminSubjectPrice[]>([]);
+  // Raw input text per subject key, so a half-typed price is not reset.
+  const [subjectDraft, setSubjectDraft] = useState<Record<string, string>>({});
+  const [savingSubjects, setSavingSubjects] = useState(false);
   const [paymentRows, setPaymentRows] = useState<AdminPaymentRequest[]>([]);
   const [paymentFilter, setPaymentFilter] = useState<"pending" | "all">("pending");
   const [decidingId, setDecidingId] = useState("");
@@ -160,6 +168,9 @@ export function AdminPage() {
           singlePriceTenge: String(p.singlePriceTenge),
           bundlePriceTenge: String(p.bundlePriceTenge),
         });
+        const subjects = await api.adminGetSubjectPrices();
+        setSubjectPrices(subjects.subjects);
+        setSubjectDraft(subjectDraftFrom(subjects.subjects));
       }
     } catch (e) {
       toast("error", e instanceof Error ? e.message : "Ошибка загрузки");
@@ -552,6 +563,23 @@ export function AdminPage() {
       toast("error", err instanceof Error ? err.message : "Ошибка кампании");
     } finally {
       setEmailBusy("");
+    }
+  }
+
+  async function handleSaveSubjectPrices() {
+    setSavingSubjects(true);
+    try {
+      const prices = Object.fromEntries(
+        subjectPrices.map((s) => [s.key, Math.max(0, Math.round(Number(subjectDraft[s.key]) || 0))]),
+      );
+      const saved = await api.adminSaveSubjectPrices(prices);
+      setSubjectPrices(saved.subjects);
+      setSubjectDraft(subjectDraftFrom(saved.subjects));
+      toast("ok", "Цены на предметы сохранены");
+    } catch (err) {
+      toast("error", err instanceof Error ? err.message : "Ошибка сохранения цен");
+    } finally {
+      setSavingSubjects(false);
     }
   }
 
@@ -1283,7 +1311,7 @@ export function AdminPage() {
             <div className="admin-page-head">
               <div>
                 <h1>Цены ҰБТ</h1>
-                <p>Общий прайс на полный пробный экзамен, не на отдельный предмет</p>
+                <p>Полный ЕНТ и отдельные предметы</p>
               </div>
             </div>
             <div className="admin-preview">
@@ -1331,6 +1359,55 @@ export function AdminPage() {
                 onClick={() => void handleSavePricing()}
               >
                 {savingPricing ? "Сохранение..." : "Сохранить цены"}
+              </button>
+            </div>
+
+            <div className="admin-preview">
+              <h2>Отдельные предметы</h2>
+              <p className="admin-hint">
+                Ученик покупает один предмет и проходит только его тест (время и вопросы как у
+                этого теста). Укажите цену в тенге; 0 — предмет отдельно не продаётся и на
+                главной не показывается.
+              </p>
+              {subjectPrices.length === 0 ? (
+                <p className="admin-hint">Пока нет ни одного теста. Добавьте тест, и предмет появится здесь.</p>
+              ) : (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Предмет</th>
+                      <th>Вариантов</th>
+                      <th>Цена, ₸</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subjectPrices.map((s) => (
+                      <tr key={s.key}>
+                        <td>{s.label}</td>
+                        <td>{s.testCount}</td>
+                        <td>
+                          <input
+                            type="number"
+                            min={0}
+                            aria-label={`Цена: ${s.label}`}
+                            value={subjectDraft[s.key] ?? "0"}
+                            onChange={(e) =>
+                              setSubjectDraft((d) => ({ ...d, [s.key]: e.target.value }))
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                disabled={savingSubjects || subjectPrices.length === 0}
+                onClick={() => void handleSaveSubjectPrices()}
+              >
+                {savingSubjects ? "Сохранение..." : "Сохранить цены на предметы"}
               </button>
             </div>
           </section>
@@ -1404,7 +1481,11 @@ export function AdminPage() {
                             "Аккаунт удалён"
                           )}
                         </td>
-                        <td>{PLAN_LABEL[row.plan]}</td>
+                        <td>
+                          {row.plan === "subject" && row.subjectKey
+                            ? `Предмет: ${row.subjectKey}`
+                            : PLAN_LABEL[row.plan]}
+                        </td>
                         <td>
                           <strong>{row.amountTenge.toLocaleString("ru-RU")} ₸</strong>
                         </td>
