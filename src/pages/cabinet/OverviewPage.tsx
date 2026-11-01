@@ -255,13 +255,6 @@ export function OverviewPage() {
                   </li>
                 ))}
               </ul>
-              {repeats.length > 0 && (
-                <p className="fresh__warn">
-                  {kz
-                    ? `Қайталанады: ${repeats.map((r) => r.name).join(", ")}. Бұл жағдайда ең ерте тапсырған нұсқа беріледі.`
-                    : `Повторятся: ${repeats.map((r) => r.name).join(", ")}. В этом случае дадим вариант, который был давнее всего.`}
-                </p>
-              )}
             </>
           )}
         </section>
