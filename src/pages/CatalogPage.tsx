@@ -424,30 +424,71 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
               ? "Тек бір пән керек болса, сол пәннің тестін ғана тапсырасыз."
               : "Если нужен один предмет, купите его отдельно и проходите только его тест."}
           </p>
-          <ul className="plans">
-            {subjects.map((s) => (
-              <li className="plan" key={s.key}>
-                <h3 className="plan__name">{s.title}</h3>
-                <span className="plan__price">{`${s.price.toLocaleString("ru-RU")} ₸`}</span>
-                {s.owned ? (
-                  <Link
-                    className="v2-btn"
-                    to={`/exam?subject=${encodeURIComponent(s.key)}`}
-                  >
-                    {kz ? "Тестті бастау" : "Начать тест"}
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    className="v2-btn v2-btn--quiet"
-                    onClick={() => buySubject(s.key)}
-                  >
-                    {kz ? "Сатып алу" : "Купить"}
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
+          {(() => {
+            // One shared price is said once above the grid; a tile only shows
+            // its own price when the admin set it differently.
+            const prices = subjects.map((s) => s.price);
+            const common = prices
+              .slice()
+              .sort(
+                (a, b) =>
+                  prices.filter((p) => p === b).length -
+                  prices.filter((p) => p === a).length,
+              )[0];
+            const allSame = prices.every((p) => p === common);
+            const sorted = subjects
+              .slice()
+              .sort((a, b) => Number(b.owned) - Number(a.owned));
+            const tenge = (n: number) => `${n.toLocaleString("ru-RU")} ₸`;
+            return (
+              <>
+                <p className="subject-grid__price">
+                  {allSame
+                    ? kz
+                      ? `Әр пән: ${tenge(common)}`
+                      : `Любой предмет: ${tenge(common)}`
+                    : kz
+                      ? `Көп пән: ${tenge(common)}`
+                      : `Большинство предметов: ${tenge(common)}`}
+                </p>
+                <ul className="subject-grid">
+                  {sorted.map((s) => (
+                    <li key={s.key}>
+                      {s.owned ? (
+                        <Link
+                          className="subject-tile subject-tile--owned"
+                          to={`/exam?subject=${encodeURIComponent(s.key)}`}
+                        >
+                          <span className="subject-tile__name">{s.title}</span>
+                          <span className="subject-tile__action">
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden="true"
+                            >
+                              play_arrow
+                            </span>
+                            {kz ? "Тестті бастау" : "Начать тест"}
+                          </span>
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          className="subject-tile"
+                          onClick={() => buySubject(s.key)}
+                        >
+                          <span className="subject-tile__name">{s.title}</span>
+                          <span className="subject-tile__action">
+                            {kz ? "Сатып алу" : "Купить"}
+                            {s.price !== common && `, ${tenge(s.price)}`}
+                          </span>
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            );
+          })()}
         </section>
       )}
 

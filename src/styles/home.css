@@ -412,6 +412,104 @@
   }
 }
 
+/* Single subjects: a dense grid of tiles. The shared price sits once above
+   it, bought subjects come first and are filled in brand colour. */
+.subject-grid__price {
+  margin: 0 0 1rem;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.subject-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 640px) {
+  .subject-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .subject-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.subject-grid > li {
+  display: flex;
+}
+
+.subject-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 5.25rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.subject-tile:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.subject-tile__name {
+  font-weight: 600;
+  font-size: 0.98rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.subject-tile__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand);
+}
+
+.subject-tile__action .material-symbols-outlined {
+  font-size: 18px;
+  margin-left: -0.2rem;
+}
+
+.subject-tile--owned {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+}
+
+.subject-tile--owned .subject-tile__action {
+  color: inherit;
+}
+
+.subject-tile--owned:hover {
+  border-color: var(--brand-hover);
+  background: var(--brand-hover);
+}
+
+[data-theme="dark"] .subject-tile--owned {
+  color: #0d1330;
+}
+
 /* How it works: a real sequence, so it is numbered. */
 .steps {
   display: grid;
