@@ -442,15 +442,18 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
             const tenge = (n: number) => `${n.toLocaleString("ru-RU")} ₸`;
             return (
               <>
-                <p className="subject-grid__price">
-                  {allSame
-                    ? kz
-                      ? `Әр пән: ${tenge(common)}`
-                      : `Любой предмет: ${tenge(common)}`
-                    : kz
-                      ? `Көп пән: ${tenge(common)}`
-                      : `Большинство предметов: ${tenge(common)}`}
-                </p>
+                {sorted.some((s) => !s.owned) && (
+                  <p className="subject-grid__price">
+                    {allSame
+                      ? kz
+                        ? "Әр пән: "
+                        : "Любой предмет: "
+                      : kz
+                        ? "Көп пән: "
+                        : "Большинство предметов: "}
+                    <strong>{tenge(common)}</strong>
+                  </p>
+                )}
                 <ul className="subject-grid">
                   {sorted.map((s) => (
                     <li key={s.key}>
@@ -461,13 +464,12 @@ export function CatalogPage({ lang, onToggleLang }: CatalogPageProps) {
                         >
                           <span className="subject-tile__name">{s.title}</span>
                           <span className="subject-tile__action">
-                            <span
-                              className="material-symbols-outlined"
-                              aria-hidden="true"
-                            >
-                              play_arrow
+                            {kz ? "Бастау" : "Начать"}
+                            <span className="subject-tile__play" aria-hidden="true">
+                              <span className="material-symbols-outlined">
+                                play_arrow
+                              </span>
                             </span>
-                            {kz ? "Тестті бастау" : "Начать тест"}
                           </span>
                         </Link>
                       ) : (
