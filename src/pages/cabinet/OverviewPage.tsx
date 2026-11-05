@@ -52,7 +52,6 @@ export function OverviewPage() {
     }
     return rows;
   }, [variants, mySubjects, kz, lang]);
-  const repeats = freshRows.filter((r) => r.total > 0 && r.fresh === 0);
 
   const progress = active
     ? active.sections.reduce(
